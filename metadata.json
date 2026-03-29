@@ -1,0 +1,7 @@
+{
+  "name": "Tính Toán Hóa Đơn",
+  "description": "Chào sếp Huy Đẹp Trai :) Chúc Sếp Ngày Mới Thành Công, Bán Hàng Đắt Khách",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

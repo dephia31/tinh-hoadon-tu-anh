@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", sans-serif;
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/60 backdrop-blur-[30px] border border-white/40 shadow-[0_20px_40px_rgba(0,0,0,0.05)];
+  }
+  .glass-panel-dark {
+    @apply bg-[#1d1d1f]/60 backdrop-blur-[30px] border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.2)];
+  }
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-blue-500;
+  }
+  .bg-gradient-primary {
+    @apply bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600;
+  }
+}

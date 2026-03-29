@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "AnalysisHistory": {
+      "title": "AnalysisHistory",
+      "description": "Stores image analysis results and user corrections",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID" },
+        "images": { 
+          "type": "array", 
+          "items": { "type": "string" }, 
+          "description": "Array of Base64 image data" 
+        },
+        "result": { "type": "string", "description": "AI generated analysis result" },
+        "correction": { "type": "string", "description": "User provided correction for the analysis" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["uid", "images", "result", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/history/{historyId}": {
+      "schema": "AnalysisHistory",
+      "description": "User analysis history collection"
+    }
+  }
+}
