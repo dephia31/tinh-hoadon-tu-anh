@@ -665,7 +665,10 @@ export default function App() {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const res = await fetch('/api/config');
+        const res = await fetch('/api/app-config');
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
         if (data.apiKey) {
           setServerKey(data.apiKey);
@@ -834,7 +837,11 @@ export default function App() {
         setError("Tên miền này chưa được cấp quyền trong Firebase. Sếp vui lòng thêm tên miền của ứng dụng vào danh sách 'Authorized domains' trong Firebase Console nhé!");
         return;
       }
-      setError("Không thể đăng nhập. Vui lòng thử lại.");
+      if (err.code === 'auth/popup-blocked') {
+        setError("Trình duyệt đã chặn cửa sổ đăng nhập. Vui lòng cho phép mở cửa sổ bật lên (pop-up) trên trang này và thử lại.");
+        return;
+      }
+      setError(`Không thể đăng nhập (${err.code || err.message || 'Lỗi không xác định'}). Vui lòng thử lại hoặc kiểm tra cài đặt trình duyệt.`);
     }
   };
 
@@ -1298,9 +1305,9 @@ export default function App() {
       
       const doc = new jsPDF();
       
-      // Load Roboto font from Google Fonts to support Vietnamese
-      const fontUrl = 'https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Me5Q.ttf'; // Roboto Regular
-      const fontBoldUrl = 'https://fonts.gstatic.com/s/roboto/v30/KFOlCnqEu92Fr1MmWUlfBBc9.ttf'; // Roboto Bold
+      // Load Roboto font from cdnjs to support Vietnamese
+      const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Regular.ttf'; // Roboto Regular
+      const fontBoldUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/fonts/Roboto/Roboto-Medium.ttf'; // Roboto Bold
       
       try {
         const [regRes, boldRes] = await Promise.all([fetch(fontUrl), fetch(fontBoldUrl)]);
@@ -1353,9 +1360,11 @@ export default function App() {
           doc.addPage();
         }
 
+        doc.setFont("Roboto", "bold");
         doc.setFontSize(18);
         doc.text(invoiceResult.invoices.length > 1 ? `HÓA ĐƠN NHẬP HÀNG ${idx + 1}` : "HÓA ĐƠN NHẬP HÀNG", 105, 20, { align: "center" });
         
+        doc.setFont("Roboto", "normal");
         doc.setFontSize(11);
         doc.text(`Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`, 105, 28, { align: "center" });
 
@@ -1380,8 +1389,8 @@ export default function App() {
           head: [['STT', 'Tên hàng', 'SL', 'Đơn giá', 'Thành tiền (Tính lại)']],
           body: tableBody,
           theme: 'grid',
-          headStyles: { fillColor: [244, 63, 94] },
-          styles: { font: 'Roboto' }
+          headStyles: { fillColor: [244, 63, 94], font: 'Roboto', fontStyle: 'bold' },
+          styles: { font: 'Roboto', fontStyle: 'normal' }
         });
 
         let finalY = (doc as any).lastAutoTable.finalY || 40;
@@ -1556,10 +1565,12 @@ export default function App() {
             ) : (
               <button
                 onClick={login}
-                className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-5 sm:py-2 bg-gradient-primary text-white rounded-full text-[12px] sm:text-sm font-medium transition-all shadow-[0_8px_16px_rgba(244,63,94,0.2)] active:scale-[0.97]"
+                className="relative group flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-2.5 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-full text-sm font-bold transition-all shadow-[0_8px_16px_rgba(244,63,94,0.3)] hover:shadow-[0_12px_24px_rgba(244,63,94,0.5)] hover:-translate-y-0.5 active:scale-[0.97]"
               >
-                <LogIn size={14} className="sm:w-[18px] sm:h-[18px]" strokeWidth={1.5} />
-                <span className="hidden sm:inline">Đăng nhập</span>
+                <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 opacity-30 blur-sm group-hover:opacity-50 transition-opacity animate-pulse"></div>
+                <LogIn size={18} strokeWidth={2.5} className="relative z-10" />
+                <span className="relative z-10">ĐĂNG NHẬP</span>
               </button>
             )}
             {images.length > 0 && (
