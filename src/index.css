@@ -12,9 +12,27 @@
     @apply bg-[#1d1d1f]/60 backdrop-blur-[30px] border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.2)];
   }
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-blue-500;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-rose-500 to-pink-500;
   }
   .bg-gradient-primary {
-    @apply bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600;
+    @apply bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600;
   }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .safe-area-pt {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }

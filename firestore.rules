@@ -2,50 +2,31 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: history
-    // Document ID: auto-generated
-    // Fields:
-    //   - uid: string (required) - User ID
-    //   - images: list (required) - Array of Base64 image data
-    //   - result: string (required) - AI generated analysis result
-    //   - correction: string (optional) - User provided correction
-    //   - timestamp: timestamp (required) - Creation timestamp
-    //
-    // ===============================================================
-
     // Helper Functions
+    // ===============================================================
     function isAuthenticated() {
       return request.auth != null;
     }
-
+    
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-
+    
     function isDocOwner() {
       return isAuthenticated() && request.auth.uid == resource.data.uid;
     }
 
-    function isAdmin() {
-      return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "qhuy0301@gmail.com" && request.auth.token.email_verified == true)); // Default admin
-    }
-
     function isValidHistory(data) {
-      return data.keys().hasAll(['uid', 'images', 'result', 'timestamp']) &&
+      return data.keys().hasAll(['uid', 'images', 'status', 'timestamp']) &&
              data.uid is string &&
              data.images is list &&
-             data.images.size() <= 10 && // Limit to 10 images
-             data.result is string &&
-             data.result.size() < 20000 &&
-             data.timestamp is timestamp &&
-             (!('correction' in data) || (data.correction is string && data.correction.size() < 5000));
+             data.status in ['processing', 'completed', 'failed'] &&
+             data.timestamp is timestamp;
     }
 
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
     match /history/{historyId} {
       allow read: if isDocOwner();
       allow create: if isAuthenticated() && 
@@ -57,8 +38,9 @@ service cloud.firestore {
       allow delete: if isDocOwner();
     }
 
-    match /users/{userId} {
-      allow read, write: if isOwner(userId);
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

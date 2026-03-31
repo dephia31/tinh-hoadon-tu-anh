@@ -13,9 +13,10 @@
         },
         "result": { "type": "string", "description": "AI generated analysis result" },
         "correction": { "type": "string", "description": "User provided correction for the analysis" },
+        "status": { "type": "string", "enum": ["processing", "completed", "failed"], "description": "Processing status" },
         "timestamp": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
       },
-      "required": ["uid", "images", "result", "timestamp"]
+      "required": ["uid", "images", "status", "timestamp"]
     }
   },
   "firestore": {
