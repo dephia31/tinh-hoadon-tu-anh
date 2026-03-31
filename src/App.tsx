@@ -1,11 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, FileSpreadsheet, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp } from 'lucide-react';
+import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { GoogleGenAI, Type } from "@google/genai";
 import { cn } from './lib/utils';
-import * as XLSX from 'xlsx';
 
 // Firebase imports
 import { auth, db } from './firebase';
@@ -400,7 +399,8 @@ const processImagesWithGemini = async (imgs: string[], aiInstance: any): Promise
          - 'finalTotalWritten': Tổng cộng cuối cùng ghi trên giấy (sau khi đã cộng/trừ các khoản ở trên).
       5. LƯU Ý CHỮ VIẾT TAY: Người viết thường thêm các nét gạch ngang, ký hiệu (như '- w', '- m', 'k', 'đ', 'cu', 'w') ở cuối các con số (ví dụ: '9.240 - w', '1.700 - m', '12.160 - w'). Hãy BỎ QUA các ký hiệu này, CHỈ lấy phần con số chính (ví dụ: 9240, 1700, 12160). 
       6. TUYỆT ĐỐI KHÔNG ghép/nối các con số ở các dòng khác nhau thành một số khổng lồ (ví dụ không được ghép 9240 và 1100 thành 92401100). Mỗi trường chỉ chứa 1 con số duy nhất tương ứng.
-      7. Trả về JSON theo đúng schema.`,
+      7. NẾU MỘT SỐ BỊ NHÌN THẤY THÀNH 2 LẦN HOẶC BỊ BÓNG MỜ (ví dụ 1307000 1307000), CHỈ LẤY 1 SỐ DUY NHẤT (1307000). TUYỆT ĐỐI KHÔNG ĐƯỢC GHÉP CHÚNG LẠI THÀNH SỐ KHỔNG LỒ (ví dụ 13070001307000).
+      8. Trả về JSON theo đúng schema.`,
     }
   ];
 
@@ -416,7 +416,7 @@ const processImagesWithGemini = async (imgs: string[], aiInstance: any): Promise
   }
   
   const response = await aiInstance.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.1-flash-lite-preview",
     contents: [{ parts }],
     config: {
       responseMimeType: "application/json",
@@ -486,15 +486,31 @@ const processImagesWithGemini = async (imgs: string[], aiInstance: any): Promise
       const rawInvoices = rawData.invoices || [];
       
       const processedInvoices: InvoiceData[] = rawInvoices.map((rawInvoice: any) => {
+      const fixDuplicatedNumber = (num: number | undefined): number | undefined => {
+        if (num === undefined) return undefined;
+        const str = num.toString();
+        if (str.length > 6 && str.length % 2 === 0) {
+          const half1 = str.slice(0, str.length / 2);
+          const half2 = str.slice(str.length / 2);
+          if (half1 === half2) {
+            return parseFloat(half1);
+          }
+        }
+        return num;
+      };
+
       const processedItems = (rawInvoice.items || []).map((item: any) => {
-        const calculatedTotal = (item.quantity || 0) * (item.unitPrice || 0);
-        const isItemCorrect = item.amountWritten === undefined || calculatedTotal === item.amountWritten;
+        const quantity = fixDuplicatedNumber(item.quantity) || 0;
+        const unitPrice = fixDuplicatedNumber(item.unitPrice) || 0;
+        const calculatedTotal = quantity * unitPrice;
+        const amountWritten = fixDuplicatedNumber(item.amountWritten);
+        const isItemCorrect = amountWritten === undefined || calculatedTotal === amountWritten;
         return {
           name: item.name || "Không rõ",
-          quantity: item.quantity || 0,
-          unitPrice: item.unitPrice || 0,
+          quantity: quantity,
+          unitPrice: unitPrice,
           calculatedTotal: calculatedTotal,
-          billTotal: item.amountWritten,
+          billTotal: amountWritten,
           isCorrect: isItemCorrect
         };
       });
@@ -503,24 +519,31 @@ const processImagesWithGemini = async (imgs: string[], aiInstance: any): Promise
 
       const adjustments = rawInvoice.summary?.adjustments || [];
       let calculatedFinalTotal = calculatedSubTotal;
-      adjustments.forEach((adj: any) => {
-        if (adj.type === 'add') calculatedFinalTotal += (adj.amount || 0);
-        else if (adj.type === 'subtract') calculatedFinalTotal -= (adj.amount || 0);
+      const processedAdjustments = adjustments.map((adj: any) => ({
+        ...adj,
+        amount: fixDuplicatedNumber(adj.amount) || 0
+      }));
+      processedAdjustments.forEach((adj: any) => {
+        if (adj.type === 'add') calculatedFinalTotal += adj.amount;
+        else if (adj.type === 'subtract') calculatedFinalTotal -= adj.amount;
       });
 
-      const isSubTotalCorrect = rawInvoice.summary?.subTotalWritten === undefined || calculatedSubTotal === rawInvoice.summary.subTotalWritten;
-      const isFinalTotalCorrect = rawInvoice.summary?.finalTotalWritten === undefined || calculatedFinalTotal === rawInvoice.summary.finalTotalWritten;
+      const subTotalWritten = fixDuplicatedNumber(rawInvoice.summary?.subTotalWritten);
+      const finalTotalWritten = fixDuplicatedNumber(rawInvoice.summary?.finalTotalWritten);
+
+      const isSubTotalCorrect = subTotalWritten === undefined || calculatedSubTotal === subTotalWritten;
+      const isFinalTotalCorrect = finalTotalWritten === undefined || calculatedFinalTotal === finalTotalWritten;
       const isItemsCorrect = processedItems.every((item: any) => item.isCorrect);
 
       return {
         isCorrect: isItemsCorrect && isSubTotalCorrect && isFinalTotalCorrect,
         items: processedItems,
         summary: {
-          billTotal: rawInvoice.summary?.subTotalWritten || 0,
+          billTotal: subTotalWritten || 0,
           calculatedTotal: calculatedSubTotal,
-          adjustments: adjustments,
+          adjustments: processedAdjustments,
           finalCalculatedTotal: calculatedFinalTotal,
-          finalBillTotal: rawInvoice.summary?.finalTotalWritten
+          finalBillTotal: finalTotalWritten
         }
       };
     });
@@ -634,9 +657,9 @@ export default function App() {
 
       if (!chatSessionRef.current) {
         chatSessionRef.current = aiInstance.chats.create({
-          model: "gemini-3-flash-preview",
+          model: "gemini-3.1-flash-lite-preview",
           config: {
-            systemInstruction: "Bạn là trợ lý ảo của cửa hàng nệm Mận Quý (Mận Quý Mattress Store). Bạn giúp khách hàng giải đáp thắc mắc về sản phẩm, hóa đơn, và các vấn đề liên quan đến cửa hàng. Hãy trả lời ngắn gọn, lịch sự và thân thiện bằng tiếng Việt. Khi khách hàng cần liên hệ trực tiếp hoặc hỏi thông tin liên lạc, hãy cung cấp số điện thoại cửa hàng là 0918030188 và người tư vấn là anh Huy.",
+            systemInstruction: "Bạn là trợ lý ảo của cửa hàng nệm Mận Quý (Mận Quý Mattress Store). Bạn giúp khách hàng giải đáp thắc mắc về sản phẩm, hóa đơn, và các vấn đề liên quan đến cửa hàng. Hãy trả lời ngắn gọn, lịch sự và thân thiện bằng tiếng Việt. Khi khách hàng cần liên hệ trực tiếp hoặc hỏi thông tin liên lạc, hãy cung cấp số điện thoại cửa hàng là 0918030188 và người tư vấn là anh Huy. Đặc biệt lưu ý: Khi có ai hỏi về tên Ngân, hãy trả lời đó là Ngân Khùng.",
           }
         });
       }
@@ -862,8 +885,8 @@ export default function App() {
       
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
+        const MAX_WIDTH = 1024;
+        const MAX_HEIGHT = 1024;
         let width = img.width;
         let height = img.height;
 
@@ -1199,102 +1222,6 @@ export default function App() {
     setError(null);
     setShowHistory(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const exportToExcel = () => {
-    if (!result) return;
-
-    try {
-      let invoiceResult: InvoiceResult;
-      try {
-        const parsed = JSON.parse(result);
-        if (parsed && typeof parsed === 'object') {
-          if ('invoices' in parsed && Array.isArray(parsed.invoices)) {
-            invoiceResult = parsed;
-          } else if ('items' in parsed && 'summary' in parsed) {
-            // Fallback for old single invoice format
-            invoiceResult = { invoices: [parsed] };
-          } else {
-            throw new Error("Invalid format");
-          }
-        } else {
-          throw new Error("Invalid format");
-        }
-      } catch (e) {
-        setError("Dữ liệu không hợp lệ để xuất Excel.");
-        return;
-      }
-
-      const data: string[][] = [];
-      
-      invoiceResult.invoices.forEach((invoiceData, idx) => {
-        if (invoiceResult.invoices.length > 1) {
-          data.push([`Hóa đơn ${idx + 1}`]);
-        }
-        data.push(['STT', 'Tên hàng', 'Số lượng', 'Đơn giá', 'Thành tiền (Tính lại)', 'Lệch']);
-        
-        invoiceData.items.forEach((item, itemIdx) => {
-          const isCorrect = item.calculatedTotal === item.billTotal;
-          const discrepancy = !isCorrect && item.billTotal !== undefined 
-            ? (item.calculatedTotal - item.billTotal).toString()
-            : '';
-          data.push([
-            (itemIdx + 1).toString(),
-            item.name,
-            item.quantity.toString(),
-            item.unitPrice.toString(),
-            item.calculatedTotal.toString(),
-            discrepancy
-          ]);
-        });
-
-        data.push([]);
-        data.push(['Cộng tiền hàng (ghi trên bill):', invoiceData.summary.billTotal.toString()]);
-        data.push(['Cộng tiền hàng (tính lại):', invoiceData.summary.calculatedTotal.toString()]);
-        
-        const isSubTotalCorrect = invoiceData.summary.calculatedTotal === invoiceData.summary.billTotal;
-        if (!isSubTotalCorrect) {
-          data.push(['Lệch tiền hàng:', (invoiceData.summary.calculatedTotal - invoiceData.summary.billTotal).toString()]);
-        }
-
-        if (invoiceData.summary.adjustments && invoiceData.summary.adjustments.length > 0) {
-          data.push([]);
-          invoiceData.summary.adjustments.forEach(adj => {
-            const desc = adj.description || (adj.type === 'add' ? 'Cộng thêm' : 'Trừ đi');
-            const sign = adj.type === 'add' ? '' : '-';
-            data.push([desc, `${sign}${adj.amount}`]);
-          });
-          
-          data.push([]);
-          if (invoiceData.summary.finalBillTotal !== undefined) {
-            data.push(['Tổng cộng cuối (ghi trên bill):', invoiceData.summary.finalBillTotal.toString()]);
-          }
-          data.push(['Tổng cộng cuối (tính lại):', invoiceData.summary.finalCalculatedTotal.toString()]);
-          
-          const isFinalTotalCorrect = invoiceData.summary.finalBillTotal === undefined || invoiceData.summary.finalCalculatedTotal === invoiceData.summary.finalBillTotal;
-          if (!isFinalTotalCorrect && invoiceData.summary.finalBillTotal !== undefined) {
-            data.push(['Lệch tổng cuối:', (invoiceData.summary.finalCalculatedTotal - invoiceData.summary.finalBillTotal).toString()]);
-          }
-        }
-        data.push([]);
-        data.push([]);
-      });
-
-      if (data.length < 1) {
-        setError("Không tìm thấy dữ liệu để xuất Excel.");
-        return;
-      }
-
-      const ws = XLSX.utils.aoa_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "KetQuaPhanTich");
-      
-      const fileName = `Man_Quy_Export_${new Date().getTime()}.xlsx`;
-      XLSX.writeFile(wb, fileName);
-    } catch (err) {
-      console.error("Excel export error:", err);
-      setError("Lỗi khi xuất file Excel. Vui lòng thử lại.");
-    }
   };
 
   const exportToPDF = async () => {
@@ -2022,13 +1949,6 @@ export default function App() {
                             >
                               <FileText size={18} strokeWidth={1.5} />
                               Xuất PDF
-                            </button>
-                            <button
-                              onClick={exportToExcel}
-                              className="flex items-center gap-2 px-5 py-2.5 sm:px-6 sm:py-3 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-full text-[13px] sm:text-sm font-semibold transition-all shadow-[0_8px_16px_rgba(16,185,129,0.2)] active:scale-[0.97]"
-                            >
-                              <FileSpreadsheet size={18} strokeWidth={1.5} />
-                              Xuất Excel
                             </button>
                             <button
                               onClick={reset}
