@@ -575,8 +575,6 @@ export default function App() {
   });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<string | null>(() => localStorage.getItem('current_result'));
-  const [correction, setCorrection] = useState<string>(() => localStorage.getItem('current_correction') || '');
-  const [isSavingCorrection, setIsSavingCorrection] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(() => localStorage.getItem('current_history_id'));
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -773,13 +771,24 @@ export default function App() {
   }, [result]);
 
   useEffect(() => {
-    localStorage.setItem('current_correction', correction);
-  }, [correction]);
-
-  useEffect(() => {
     if (currentHistoryId) localStorage.setItem('current_history_id', currentHistoryId);
     else localStorage.removeItem('current_history_id');
   }, [currentHistoryId]);
+
+  // Auto-save result changes to Firestore
+  useEffect(() => {
+    if (!user || !currentHistoryId || !result) return;
+    
+    const timeoutId = setTimeout(async () => {
+      try {
+        await updateDoc(doc(db, 'history', currentHistoryId), { result });
+      } catch (err) {
+        console.error("Auto-save error:", err);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [result, user, currentHistoryId]);
 
   // Auth listener
   useEffect(() => {
@@ -1111,7 +1120,6 @@ export default function App() {
       const analysisResult = await processImagesWithGemini(imgs, aiInstance);
 
       setResult(analysisResult);
-      setCorrection('');
 
       // Update Firestore with result and 'completed' status
       if (user && docId) {
@@ -1151,29 +1159,6 @@ export default function App() {
     }
   };
 
-  const saveCorrection = async () => {
-    if (!user || !currentHistoryId) return;
-    
-    setIsSavingCorrection(true);
-    try {
-      const updateData: any = { result };
-      if (correction.trim()) {
-        updateData.correction = correction;
-      }
-      
-      await updateDoc(doc(db, 'history', currentHistoryId), updateData);
-      // Update local state for immediate feedback
-      setHistory(prev => prev.map(item => 
-        item.id === currentHistoryId ? { ...item, correction, result } : item
-      ));
-      setError(null);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `history/${currentHistoryId}`);
-    } finally {
-      setIsSavingCorrection(false);
-    }
-  };
-
   const deleteHistoryItem = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!user) return;
@@ -1191,7 +1176,6 @@ export default function App() {
   const reset = () => {
     setImages([]);
     setResult(null);
-    setCorrection('');
     setCurrentHistoryId(null);
     setError(null);
     setIsAnalyzing(false);
@@ -1217,7 +1201,6 @@ export default function App() {
       setIsAnalyzing(false);
     }
     
-    setCorrection(item.correction || '');
     setCurrentHistoryId(item.id);
     setError(null);
     setShowHistory(false);
@@ -1926,23 +1909,6 @@ export default function App() {
                             )}
                           </div>
                           <div className="flex flex-wrap justify-center items-center gap-3 sm:gap-4 w-full pt-2">
-                            <button
-                              onClick={saveCorrection}
-                              disabled={isSavingCorrection || !user || !currentHistoryId}
-                              className={cn(
-                                "flex items-center gap-2 px-5 py-2.5 sm:px-6 sm:py-3 rounded-full text-[13px] sm:text-sm font-semibold transition-all shadow-[0_8px_16px_rgba(244,63,94,0.2)] active:scale-[0.97]",
-                                isSavingCorrection || !user || !currentHistoryId
-                                  ? "bg-white/50 text-[#999] cursor-not-allowed backdrop-blur-md shadow-none"
-                                  : "bg-gradient-primary text-white"
-                              )}
-                            >
-                              {isSavingCorrection ? (
-                                <Loader2 className="animate-spin" size={18} strokeWidth={1.5} />
-                              ) : (
-                                <Save size={18} strokeWidth={1.5} />
-                              )}
-                              Lưu thay đổi
-                            </button>
                             <button
                               onClick={exportToPDF}
                               className="flex items-center gap-2 px-5 py-2.5 sm:px-6 sm:py-3 bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-full text-[13px] sm:text-sm font-semibold transition-all shadow-[0_8px_16px_rgba(244,63,94,0.2)] active:scale-[0.97]"
