@@ -113,7 +113,7 @@ interface InvoiceData {
     isCorrect: boolean;
   }[];
   summary: {
-    billTotal: number;
+    billTotal?: number;
     calculatedTotal: number;
     adjustments: Adjustment[];
     finalCalculatedTotal: number;
@@ -221,7 +221,7 @@ const InvoiceResultRenderer = ({ data, onChange }: { data: string, onChange?: (n
   return (
     <div className="space-y-8">
       {resultData.invoices.map((invoiceData, invoiceIdx) => {
-        const isSubTotalCorrect = invoiceData.summary.calculatedTotal === invoiceData.summary.billTotal;
+        const isSubTotalCorrect = invoiceData.summary.billTotal === undefined || invoiceData.summary.calculatedTotal === invoiceData.summary.billTotal;
         const isFinalTotalCorrect = invoiceData.summary.finalBillTotal === undefined || invoiceData.summary.finalCalculatedTotal === invoiceData.summary.finalBillTotal;
 
         return (
@@ -306,10 +306,12 @@ const InvoiceResultRenderer = ({ data, onChange }: { data: string, onChange?: (n
               {/* Summary Section */}
               <div className="p-5 sm:p-8 space-y-4">
                 <div className="h-px bg-gray-100 w-full mb-4 sm:mb-6" />
-                <div className="flex justify-between items-center text-[14px] sm:text-[15px] font-medium text-[#86868B]">
-                  <span>Cộng tiền hàng (ghi trên bill):</span>
-                  <span className={!isSubTotalCorrect ? "line-through" : ""}>{formatCurrency(invoiceData.summary.billTotal)}</span>
-                </div>
+                {invoiceData.summary.billTotal !== undefined && (
+                  <div className="flex justify-between items-center text-[14px] sm:text-[15px] font-medium text-[#86868B]">
+                    <span>Cộng tiền hàng (ghi trên bill):</span>
+                    <span className={!isSubTotalCorrect ? "line-through" : ""}>{formatCurrency(invoiceData.summary.billTotal)}</span>
+                  </div>
+                )}
                 
                 <div className="flex justify-between items-center">
                   <span className="text-lg sm:text-xl font-black text-[#0066CC] tracking-tight">Cộng tiền hàng (tính lại):</span>
@@ -318,7 +320,7 @@ const InvoiceResultRenderer = ({ data, onChange }: { data: string, onChange?: (n
                   </span>
                 </div>
 
-                {!isSubTotalCorrect && (
+                {!isSubTotalCorrect && invoiceData.summary.billTotal !== undefined && (
                   <div className="flex justify-between items-center mt-2 p-3 bg-red-50 border border-red-100 rounded-xl">
                     <span className="text-sm font-bold text-red-700">Lệch tiền hàng:</span>
                     <span className="text-base font-bold text-red-700">
@@ -394,9 +396,9 @@ const processImagesWithGemini = async (imgs: string[], aiInstance: any): Promise
       2. CHỈ TRÍCH XUẤT, KHÔNG TỰ TÍNH TOÁN LẠI. Nếu trên giấy viết sai toán học (ví dụ 20 x 85 = 1100), bạn BẮT BUỘC phải trích xuất đúng con số 1100 đã viết trên giấy vào trường 'amountWritten'. KHÔNG ĐƯỢC tự sửa thành 1700.
       3. Trích xuất các mặt hàng: Tên, Số lượng, Đơn giá, và Thành tiền (con số ghi ở cuối mỗi dòng).
       4. Trích xuất phần Tổng cộng:
-         - 'subTotalWritten': Tổng tiền hàng hóa (kết quả cộng các dòng hàng).
+         - 'subTotalWritten': Tổng tiền hàng hóa (kết quả cộng các dòng hàng). CHÚ Ý: Đôi khi tổng tiền chỉ được ghi ở dòng cuối cùng với chữ "Nhận", "Cộng", "Tổng", "TC", hoặc chỉ là một con số nằm dưới đường gạch ngang. Hãy lấy con số đó làm subTotalWritten.
          - 'adjustments': Các dòng cộng/trừ thêm bên dưới tổng tiền hàng (ví dụ: + 12.160 nợ cũ, hoặc - 500 trả trước).
-         - 'finalTotalWritten': Tổng cộng cuối cùng ghi trên giấy (sau khi đã cộng/trừ các khoản ở trên).
+         - 'finalTotalWritten': Tổng cộng cuối cùng ghi trên giấy (sau khi đã cộng/trừ các khoản ở trên). Nếu không có khoản cộng/trừ nào, finalTotalWritten có thể bằng subTotalWritten.
       5. LƯU Ý CHỮ VIẾT TAY: Người viết thường thêm các nét gạch ngang, ký hiệu (như '- w', '- m', 'k', 'đ', 'cu', 'w') ở cuối các con số (ví dụ: '9.240 - w', '1.700 - m', '12.160 - w'). Hãy BỎ QUA các ký hiệu này, CHỈ lấy phần con số chính (ví dụ: 9240, 1700, 12160). 
       6. TUYỆT ĐỐI KHÔNG ghép/nối các con số ở các dòng khác nhau thành một số khổng lồ (ví dụ không được ghép 9240 và 1100 thành 92401100). Mỗi trường chỉ chứa 1 con số duy nhất tương ứng.
       7. NẾU MỘT SỐ BỊ NHÌN THẤY THÀNH 2 LẦN HOẶC BỊ BÓNG MỜ (ví dụ 1307000 1307000), CHỈ LẤY 1 SỐ DUY NHẤT (1307000). TUYỆT ĐỐI KHÔNG ĐƯỢC GHÉP CHÚNG LẠI THÀNH SỐ KHỔNG LỒ (ví dụ 13070001307000).
@@ -528,8 +530,16 @@ const processImagesWithGemini = async (imgs: string[], aiInstance: any): Promise
         else if (adj.type === 'subtract') calculatedFinalTotal -= adj.amount;
       });
 
-      const subTotalWritten = fixDuplicatedNumber(rawInvoice.summary?.subTotalWritten);
-      const finalTotalWritten = fixDuplicatedNumber(rawInvoice.summary?.finalTotalWritten);
+      let subTotalWritten = fixDuplicatedNumber(rawInvoice.summary?.subTotalWritten);
+      let finalTotalWritten = fixDuplicatedNumber(rawInvoice.summary?.finalTotalWritten);
+
+      if (processedAdjustments.length === 0) {
+        if ((subTotalWritten === undefined || subTotalWritten === 0) && finalTotalWritten !== undefined && finalTotalWritten > 0) {
+          subTotalWritten = finalTotalWritten;
+        } else if ((finalTotalWritten === undefined || finalTotalWritten === 0) && subTotalWritten !== undefined && subTotalWritten > 0) {
+          finalTotalWritten = subTotalWritten;
+        }
+      }
 
       const isSubTotalCorrect = subTotalWritten === undefined || calculatedSubTotal === subTotalWritten;
       const isFinalTotalCorrect = finalTotalWritten === undefined || calculatedFinalTotal === finalTotalWritten;
@@ -539,7 +549,7 @@ const processImagesWithGemini = async (imgs: string[], aiInstance: any): Promise
         isCorrect: isItemsCorrect && isSubTotalCorrect && isFinalTotalCorrect,
         items: processedItems,
         summary: {
-          billTotal: subTotalWritten || 0,
+          billTotal: subTotalWritten,
           calculatedTotal: calculatedSubTotal,
           adjustments: processedAdjustments,
           finalCalculatedTotal: calculatedFinalTotal,
@@ -1309,14 +1319,16 @@ export default function App() {
 
         // Summary
         finalY += 10;
-        doc.text(`Cộng tiền hàng (ghi trên bill): ${formatCurrency(invoiceData.summary.billTotal)}`, 14, finalY);
-        finalY += 7;
+        if (invoiceData.summary.billTotal !== undefined) {
+          doc.text(`Cộng tiền hàng (ghi trên bill): ${formatCurrency(invoiceData.summary.billTotal)}`, 14, finalY);
+          finalY += 7;
+        }
         doc.setFont("Roboto", "bold");
         doc.text(`Cộng tiền hàng (tính lại): ${formatCurrency(invoiceData.summary.calculatedTotal)}`, 14, finalY);
         doc.setFont("Roboto", "normal");
         
-        const isSubTotalCorrect = invoiceData.summary.calculatedTotal === invoiceData.summary.billTotal;
-        if (!isSubTotalCorrect) {
+        const isSubTotalCorrect = invoiceData.summary.billTotal === undefined || invoiceData.summary.calculatedTotal === invoiceData.summary.billTotal;
+        if (!isSubTotalCorrect && invoiceData.summary.billTotal !== undefined) {
           finalY += 7;
           doc.setTextColor(220, 38, 38); // Red
           doc.text(`Lệch tiền hàng: ${formatCurrency(invoiceData.summary.calculatedTotal - invoiceData.summary.billTotal)}`, 14, finalY);
