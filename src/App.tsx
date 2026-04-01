@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp, Package, Plus, Search, PlusCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import LuckyCat from './components/LuckyCat';
+import Logo from './components/Logo';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -1804,19 +1806,10 @@ export default function App() {
       <header className="glass-panel fixed top-0 left-0 right-0 z-20 border-b-0 border-white/40 safe-area-pt">
         <div className="max-w-4xl mx-auto px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
-            <img 
-              src="/logo.png" 
-              alt="Mận Quý Mattress Store" 
-              className="h-12 sm:h-16 object-contain cursor-pointer transition-transform hover:scale-105 active:scale-95" 
+            <Logo 
+              className="h-12 sm:h-16 w-auto transition-transform hover:scale-105 active:scale-95" 
               onClick={reset}
-              title="Làm mới ứng dụng"
-              onError={(e) => {
-              // Fallback if image is not found
-              const target = e.target as HTMLImageElement;
-              target.onerror = null;
-              target.style.display = 'none';
-              target.nextElementSibling?.classList.remove('hidden');
-            }} />
+            />
             <div 
               className="hidden flex items-center gap-2 sm:gap-3 min-w-0 shrink-0 cursor-pointer transition-transform hover:scale-105 active:scale-95"
               onClick={reset}
@@ -2954,24 +2947,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto px-6 pt-32 pb-48 text-center text-sm flex flex-col items-center gap-6">
-        <motion.div
-          animate={{ 
-            rotate: [0, -8, 8, -8, 0],
-            y: [0, -3, 0]
-          }}
-          transition={{ 
-            duration: 4, 
-            repeat: Infinity,
-            ease: "easeInOut"
-          }}
-          className="w-8 h-8 sm:w-12 sm:h-12"
-        >
-          <img 
-            src="https://img.icons8.com/color/512/maneki-neko.png" 
-            alt="Mèo thần tài" 
-            className="w-full h-full object-contain drop-shadow-md"
-          />
-        </motion.div>
+        <LuckyCat className="w-8 h-8 sm:w-12 sm:h-12" />
         <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
           © 2026 Mận Quý • Powered by Dephia
         </p>
