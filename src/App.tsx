@@ -638,17 +638,38 @@ export default function App() {
   // Chatbot state
   const [chatbotKnowledge, setChatbotKnowledge] = useState<string>('');
   const [isSavingKnowledge, setIsSavingKnowledge] = useState(false);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{role: 'user'|'model', text: string}[]>([]);
-  const [chatInput, setChatInput] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(() => localStorage.getItem('chat_open') === 'true');
+  const [chatMessages, setChatMessages] = useState<{role: 'user'|'model', text: string}[]>(() => {
+    const saved = localStorage.getItem('chat_messages');
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [chatInput, setChatInput] = useState(() => localStorage.getItem('chat_input') || '');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatSessionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Persist chatbot state
+  useEffect(() => {
+    localStorage.setItem('chat_open', String(isChatOpen));
+  }, [isChatOpen]);
+
+  useEffect(() => {
+    localStorage.setItem('chat_messages', JSON.stringify(chatMessages));
+  }, [chatMessages]);
+
+  useEffect(() => {
+    localStorage.setItem('chat_input', chatInput);
+  }, [chatInput]);
 
   const isAdmin = user?.email === 'qhuy0301@gmail.com';
 
   // Refresh app on visibility change
   const isExternalActionRef = useRef(false);
+  const lastHiddenTimeRef = useRef<number | null>(null);
   const triggerExternalAction = useCallback(() => {
     isExternalActionRef.current = true;
     setTimeout(() => {
@@ -660,12 +681,16 @@ export default function App() {
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenTimeRef.current = Date.now();
+      } else if (document.visibilityState === 'visible') {
         if (isExternalActionRef.current) {
           isExternalActionRef.current = false;
-        } else {
+        } else if (lastHiddenTimeRef.current && Date.now() - lastHiddenTimeRef.current > 3600000) {
+          // Only reload if the app has been hidden for more than 1 hour (3600000 ms)
           window.location.reload();
         }
+        lastHiddenTimeRef.current = null;
       }
     };
 
@@ -1198,6 +1223,10 @@ export default function App() {
       }
       if (err.code === 'auth/unauthorized-domain') {
         setError("Tên miền này chưa được cấp quyền trong Firebase. Sếp vui lòng thêm tên miền của ứng dụng vào danh sách 'Authorized domains' trong Firebase Console nhé!");
+        return;
+      }
+      if (err.code === 'auth/network-request-failed') {
+        setError("Lỗi kết nối mạng (auth/network-request-failed). Sếp vui lòng kiểm tra: 1. Kết nối internet; 2. Tắt các trình chặn quảng cáo (AdBlock); 3. Thêm tên miền này vào 'Authorized domains' trong Firebase Console.");
         return;
       }
       if (err.code === 'auth/popup-blocked') {
