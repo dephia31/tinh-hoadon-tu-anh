@@ -642,6 +642,31 @@ export default function App() {
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [showChatbotKnowledge, setShowChatbotKnowledge] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [showLuckyMessage, setShowLuckyMessage] = useState(false);
+  const [luckyMessageText, setLuckyMessageText] = useState("🧧 Cung Hỷ Phát Tài 🧧");
+  const luckyClickCountRef = useRef(0);
+  const luckyTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleLuckyCatClick = () => {
+    luckyClickCountRef.current += 1;
+    
+    if (luckyTimerRef.current) {
+      clearTimeout(luckyTimerRef.current);
+    }
+
+    if (luckyClickCountRef.current >= 3) {
+      setLuckyMessageText("✨ Sếp Huy đẹp trai Phát Tài Phát Lộc ✨");
+    } else {
+      setLuckyMessageText("🧧 Cung Hỷ Phát Tài 🧧");
+    }
+
+    setShowLuckyMessage(true);
+    
+    luckyTimerRef.current = setTimeout(() => {
+      setShowLuckyMessage(false);
+      luckyClickCountRef.current = 0;
+    }, 3000);
+  };
 
   const filteredProducts = useMemo(() => {
     if (!searchQuery) return products;
@@ -3130,12 +3155,51 @@ export default function App() {
       {/* Footer */}
       {!isSearching && (
         <footer className="max-w-4xl mx-auto px-6 pt-32 pb-48 text-center text-sm flex flex-col items-center gap-6">
-          <LuckyCat className="w-16 h-16 sm:w-24 sm:h-24" />
+          <div onClick={handleLuckyCatClick} className="cursor-pointer transition-transform active:scale-90">
+            <LuckyCat className="w-16 h-16 sm:w-24 sm:h-24" />
+          </div>
           <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
             © 2026 Mận Quý • Powered by Dephia
           </p>
         </footer>
       )}
+
+      {/* Lucky Message Overlay */}
+      <AnimatePresence>
+        {showLuckyMessage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5, y: 50 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.5, y: -50 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
+          >
+            <div className="bg-white/90 backdrop-blur-xl border-4 border-red-500 px-8 py-6 rounded-[40px] shadow-[0_20px_50px_rgba(239,68,68,0.3)] flex flex-col items-center gap-4">
+              <span className="text-4xl sm:text-6xl font-black text-red-600 tracking-tighter animate-bounce text-center">
+                {luckyMessageText}
+              </span>
+              <div className="flex gap-2">
+                {[...Array(5)].map((_, i) => (
+                  <motion.span
+                    key={i}
+                    animate={{ 
+                      y: [0, -20, 0],
+                      rotate: [0, 10, -10, 0]
+                    }}
+                    transition={{ 
+                      duration: 1, 
+                      repeat: Infinity, 
+                      delay: i * 0.1 
+                    }}
+                    className="text-2xl"
+                  >
+                    💰
+                  </motion.span>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Chatbot UI */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
