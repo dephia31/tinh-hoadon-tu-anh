@@ -652,6 +652,32 @@ export default function App() {
   const chatSessionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Version check for auto-update
+  useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        const response = await fetch('/api/version');
+        if (!response.ok) return;
+        const data = await response.json();
+        const storedVersion = localStorage.getItem('app_version');
+        
+        if (data.version && storedVersion && data.version !== storedVersion) {
+          console.log(`New version detected: ${data.version}. Updating...`);
+          localStorage.setItem('app_version', data.version);
+          window.location.reload();
+        } else if (data.version && !storedVersion) {
+          localStorage.setItem('app_version', data.version);
+        }
+      } catch (e) {
+        // Silent fail
+      }
+    };
+    checkVersion();
+    // Check every 15 minutes
+    const interval = setInterval(checkVersion, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Persist chatbot state
   useEffect(() => {
     localStorage.setItem('chat_open', String(isChatOpen));
@@ -2369,6 +2395,32 @@ export default function App() {
                   >
                     Lưu và Đóng
                   </button>
+
+                  <div className="pt-4 border-t border-gray-100 space-y-3">
+                    <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-400 ml-1">
+                      Hệ thống & Cập nhật
+                    </label>
+                    <button
+                      onClick={() => {
+                        if (confirm("Xác nhận xóa bộ nhớ đệm và tải lại ứng dụng để cập nhật bản mới nhất?")) {
+                          if ('caches' in window) {
+                            caches.keys().then((names) => {
+                              for (let name of names) caches.delete(name);
+                            });
+                          }
+                          window.location.reload();
+                        }
+                      }}
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-gray-50 text-gray-600 rounded-[20px] text-sm font-medium hover:bg-gray-100 transition-all active:scale-[0.98] border border-gray-100"
+                    >
+                      <RefreshCw size={16} strokeWidth={2} />
+                      Xóa Cache & Tải lại ứng dụng
+                    </button>
+                    <div className="flex items-center justify-center gap-2 text-[10px] text-gray-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                      Phiên bản: {localStorage.getItem('app_version') || '1.0.1'}
+                    </div>
+                  </div>
                   <a 
                     href="https://aistudio.google.com/app/apikey" 
                     target="_blank" 

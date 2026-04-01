@@ -11,6 +11,10 @@ async function startServer() {
   const PORT = 3000;
 
   // API routes
+  app.get("/api/version", (req, res) => {
+    res.json({ version: "1.0.1" }); // Increment this manually when redeploying
+  });
+
   app.get("/api/app-config", (req, res) => {
     // Return the API key status and potentially the key itself if in AI Studio
     const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
