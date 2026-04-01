@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp, Package, Plus, Search, PlusCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -634,6 +634,12 @@ export default function App() {
   const [serverKey, setServerKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery) return products;
+    const query = searchQuery.toLowerCase();
+    return products.filter(p => p.name.toLowerCase().includes(query));
+  }, [products, searchQuery]);
 
   // Chatbot state
   const [chatbotKnowledge, setChatbotKnowledge] = useState<string>('');
@@ -1889,7 +1895,7 @@ export default function App() {
           {/* Action Area */}
           <section className="space-y-6 sm:space-y-8">
             <div className="text-center space-y-2">
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight md:text-4xl">Tính Toán Hóa Đơn</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight md:text-4xl bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 drop-shadow-sm">Tính Toán Hóa Đơn</h2>
               <p className="text-[#666] max-w-lg mx-auto text-sm sm:text-base">
                 Chào sếp Huy Đẹp Trai :) Chúc Sếp Ngày Mới Thành Công, Bán Hàng Đắt Khách
               </p>
@@ -2309,13 +2315,14 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowSettings(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]"
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] will-change-opacity"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-md glass-panel z-[70] rounded-[32px] overflow-hidden flex flex-col max-h-[90vh]"
+              transition={{ type: 'tween', duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-md glass-panel z-[70] rounded-[32px] overflow-hidden flex flex-col max-h-[90vh] will-change-transform"
             >
               <div className="p-4 sm:p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md shrink-0">
                 <div className="flex items-center gap-2">
@@ -2446,13 +2453,14 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowHistory(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30"
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 will-change-opacity"
             />
             <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              className="fixed top-0 right-0 bottom-0 w-[85vw] sm:max-w-md glass-panel z-40 border-l border-white/40 flex flex-col safe-area-pt shadow-2xl"
+              initial={{ x: '100%', opacity: 0.5 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0 }}
+              transition={{ type: 'tween', duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed top-0 right-0 bottom-0 w-[85vw] sm:max-w-md glass-panel z-40 border-l border-white/40 flex flex-col safe-area-pt shadow-2xl will-change-transform"
             >
               <div className="p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md">
                 <h3 className="text-xl font-semibold tracking-tight">Lịch sử phân tích</h3>
@@ -2468,7 +2476,7 @@ export default function App() {
                     <div
                       key={item.id}
                       onClick={() => selectHistoryItem(item)}
-                      className="group relative bg-white/50 border border-white/60 rounded-[24px] p-4 cursor-pointer hover:bg-white/80 transition-all hover:shadow-md backdrop-blur-md active:scale-[0.97]"
+                      className="group relative bg-white/70 border border-white/60 rounded-[24px] p-4 cursor-pointer hover:bg-white/90 transition-shadow hover:shadow-md active:scale-[0.97]"
                     >
                       <div className="flex gap-4">
                         <div className="relative">
@@ -2530,14 +2538,14 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowProducts(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30"
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 will-change-opacity"
             />
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-0 glass-panel z-40 flex flex-col safe-area-pt shadow-2xl overflow-hidden border-t border-white/40"
+              initial={{ y: '100%', opacity: 0.5 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: 'tween', duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed inset-0 glass-panel z-40 flex flex-col safe-area-pt shadow-2xl overflow-hidden border-t border-white/40 will-change-transform"
             >
               <div className="p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md">
                 <h3 className="text-2xl font-bold tracking-tight flex items-center gap-3">
@@ -2796,10 +2804,9 @@ export default function App() {
                       <p className="text-sm">Chưa có sản phẩm nào</p>
                     </div>
                   ) : (
-                    products
-                      .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                    filteredProducts
                       .map((product) => (
-                      <div key={product.id} className="group bg-white border border-gray-100 rounded-2xl p-4 hover:shadow-md transition-all relative">
+                      <div key={product.id} className="group bg-white border border-gray-100 rounded-2xl p-4 hover:shadow-md transition-shadow relative">
                         {editingProduct?.id === product.id ? (
                           <div className="space-y-3">
                             <input 
@@ -2946,8 +2953,29 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer */}
-      <footer className="max-w-4xl mx-auto px-6 py-12 text-center text-[#999] text-sm">
-        <p>© 2026 Mận Quý • Powered by Gemini AI</p>
+      <footer className="max-w-4xl mx-auto px-6 pt-32 pb-48 text-center text-sm flex flex-col items-center gap-6">
+        <motion.div
+          animate={{ 
+            rotate: [0, -8, 8, -8, 0],
+            y: [0, -3, 0]
+          }}
+          transition={{ 
+            duration: 4, 
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+          className="w-12 h-12 sm:w-16 sm:h-16"
+        >
+          <img 
+            src="/api/attachments/AIS_IMG_20260401_083857.png" 
+            alt="Mèo thần tài" 
+            className="w-full h-full object-contain drop-shadow-lg"
+            referrerPolicy="no-referrer"
+          />
+        </motion.div>
+        <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
+          © 2026 Mận Quý • Powered by Dephia
+        </p>
       </footer>
 
       {/* Chatbot UI */}
@@ -2958,8 +2986,8 @@ export default function App() {
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              className="bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl rounded-2xl w-[320px] sm:w-[380px] h-[450px] sm:h-[500px] mb-4 flex flex-col overflow-hidden"
+              transition={{ type: 'tween', duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+              className="bg-white/90 backdrop-blur-xl border border-white/60 shadow-2xl rounded-2xl w-[320px] sm:w-[380px] h-[450px] sm:h-[500px] mb-4 flex flex-col overflow-hidden will-change-transform"
             >
               {/* Chat Header */}
               <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-rose-50 to-orange-50 flex items-center justify-between">
@@ -3058,12 +3086,12 @@ export default function App() {
             <button
               onClick={() => setShowHistory(!showHistory)}
               className={cn(
-                "w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95 relative",
+                "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95 relative",
                 showHistory ? "bg-gray-800" : "bg-red-500 shadow-[0_8px_16px_rgba(239,68,68,0.3)]"
               )}
               title={showHistory ? "Đóng Lịch Sử" : "Lịch Sử"}
             >
-              {showHistory ? <X size={24} /> : <History size={24} />}
+              {showHistory ? <X size={28} /> : <History size={28} />}
               {!showHistory && history.length > 0 && (
                 <span className="absolute -top-1 -right-1 bg-white text-red-500 text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold shadow-sm border border-red-100">
                   {history.length}
@@ -3075,12 +3103,12 @@ export default function App() {
             <button
               onClick={() => setShowProducts(!showProducts)}
               className={cn(
-                "w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95",
+                "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95",
                 showProducts ? "bg-gray-800" : "bg-blue-600 shadow-[0_8px_16px_rgba(37,99,235,0.3)]"
               )}
               title={showProducts ? "Đóng kho hàng" : "Mở kho hàng"}
             >
-              {showProducts ? <X size={24} /> : <Package size={24} />}
+              {showProducts ? <X size={28} /> : <Package size={28} />}
             </button>
           )}
           <button
@@ -3095,19 +3123,19 @@ export default function App() {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }
             }}
-            className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/80 backdrop-blur-md border border-white/60 flex items-center justify-center text-gray-700 shadow-lg transition-transform hover:scale-105 active:scale-95"
+            className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white/80 backdrop-blur-md border border-white/60 flex items-center justify-center text-gray-700 shadow-lg transition-transform hover:scale-105 active:scale-95"
             title="Cuộn về đầu trang"
           >
-            <ArrowUp size={24} strokeWidth={1.5} />
+            <ArrowUp size={28} strokeWidth={1.5} />
           </button>
           <button
             onClick={() => setIsChatOpen(!isChatOpen)}
             className={cn(
-              "w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95",
+              "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95",
               isChatOpen ? "bg-gray-800" : "bg-gradient-primary shadow-[0_8px_16px_rgba(244,63,94,0.3)]"
             )}
           >
-            {isChatOpen ? <X size={24} /> : <MessageCircle size={24} />}
+            {isChatOpen ? <X size={28} /> : <MessageCircle size={28} />}
           </button>
         </div>
       </div>
