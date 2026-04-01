@@ -2405,7 +2405,7 @@ export default function App() {
               <div className="p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md">
                 <h3 className="text-xl font-semibold tracking-tight">Lịch sử phân tích</h3>
               </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div id="history-drawer-content" className="flex-1 overflow-y-auto p-6 space-y-4">
                 {history.length === 0 ? (
                   <div className="text-center py-12 text-[#999]">
                     <History size={48} strokeWidth={1.5} className="mx-auto mb-4 opacity-20" />
@@ -2474,12 +2474,20 @@ export default function App() {
         {showProducts && (
           <>
             <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowProducts(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30"
+            />
+            <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-0 glass-panel z-40 flex flex-col safe-area-pt shadow-2xl overflow-hidden"
+              className="fixed bottom-0 left-0 right-0 h-[90vh] glass-panel z-40 flex flex-col safe-area-pt shadow-2xl overflow-hidden rounded-t-[32px] border-t border-white/40"
             >
+              <div className="w-12 h-1.5 bg-gray-300/50 rounded-full mx-auto mt-3 mb-1 shrink-0" />
               <div className="p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md">
                 <h3 className="text-2xl font-bold tracking-tight flex items-center gap-3">
                   <Package size={32} className="text-blue-500" />
@@ -2492,7 +2500,7 @@ export default function App() {
                   <X size={28} />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-8 max-w-5xl mx-auto w-full">
+              <div id="products-drawer-content" className="flex-1 overflow-y-auto p-6 space-y-8 max-w-5xl mx-auto w-full">
                 {/* Excel Upload Section */}
                 {isAdmin && (
                   <div className="space-y-4">
@@ -2922,7 +2930,7 @@ export default function App() {
               </div>
 
               {/* Chat Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/30">
+              <div id="chat-messages-container" className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/30">
                 {chatMessages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-60">
                     <Bot size={40} className="text-gray-400" />
@@ -3025,7 +3033,17 @@ export default function App() {
             </button>
           )}
           <button
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            onClick={() => {
+              if (showProducts) {
+                document.getElementById('products-drawer-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+              } else if (showHistory) {
+                document.getElementById('history-drawer-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+              } else if (isChatOpen) {
+                document.getElementById('chat-messages-container')?.scrollTo({ top: 0, behavior: 'smooth' });
+              } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
             className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/80 backdrop-blur-md border border-white/60 flex items-center justify-center text-gray-700 shadow-lg transition-transform hover:scale-105 active:scale-95"
             title="Cuộn về đầu trang"
           >
