@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp, Package, Plus, Search, PlusCircle } from 'lucide-react';
+import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp, Package, Plus, Search, PlusCircle, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LuckyCat from './components/LuckyCat';
 import Logo from './components/Logo';
@@ -631,16 +631,32 @@ export default function App() {
   const [showProducts, setShowProducts] = useState(false);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [showDeleteAllHistoryConfirm, setShowDeleteAllHistoryConfirm] = useState(false);
+  const [isDeletingAllHistory, setIsDeletingAllHistory] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [hasAIStudioKey, setHasAIStudioKey] = useState<boolean | null>(null);
   const [serverKey, setServerKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [showManualAdd, setShowManualAdd] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [showChatbotKnowledge, setShowChatbotKnowledge] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const filteredProducts = useMemo(() => {
     if (!searchQuery) return products;
     const query = searchQuery.toLowerCase();
-    return products.filter(p => p.name.toLowerCase().includes(query));
+    return products.filter(p => {
+      const nameMatch = p.name.toLowerCase().includes(query);
+      const sizeMatch = p.size?.toLowerCase().includes(query);
+      const thicknessMatch = p.thickness?.toLowerCase().includes(query);
+      const descriptionMatch = p.description?.toLowerCase().includes(query);
+      const categoryMatch = p.category?.toLowerCase().includes(query);
+      const attrMatch = p.attributes && Object.entries(p.attributes).some(([key, val]) => 
+        key.toLowerCase().includes(query) || val.toLowerCase().includes(query)
+      );
+      return nameMatch || sizeMatch || thicknessMatch || descriptionMatch || categoryMatch || attrMatch;
+    });
   }, [products, searchQuery]);
 
   // Chatbot state
@@ -1090,6 +1106,48 @@ export default function App() {
     } catch (err) {
       console.error("Delete product error:", err);
       handleFirestoreError(err, OperationType.DELETE, 'products');
+    }
+  };
+
+  const handleDeleteHistory = async (id: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'history', id));
+      if (currentHistoryId === id) {
+        setResult(null);
+        setImages([]);
+        setCurrentHistoryId(null);
+        localStorage.removeItem('current_result');
+        localStorage.removeItem('current_images');
+        localStorage.removeItem('current_history_id');
+      }
+    } catch (err) {
+      console.error("Delete history error:", err);
+      handleFirestoreError(err, OperationType.DELETE, 'history');
+    }
+  };
+
+  const handleDeleteAllHistory = async () => {
+    if (!user) return;
+    
+    setIsDeletingAllHistory(true);
+    try {
+      // Delete one by one for simplicity and safety
+      for (const item of history) {
+        await deleteDoc(doc(db, 'history', item.id));
+      }
+      setResult(null);
+      setImages([]);
+      setCurrentHistoryId(null);
+      localStorage.removeItem('current_result');
+      localStorage.removeItem('current_images');
+      localStorage.removeItem('current_history_id');
+      setShowDeleteAllHistoryConfirm(false);
+    } catch (err) {
+      console.error("Delete all history error:", err);
+      handleFirestoreError(err, OperationType.DELETE, 'history');
+    } finally {
+      setIsDeletingAllHistory(false);
     }
   };
 
@@ -1794,105 +1852,112 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      {/* Upload Success Toast */}
-      <AnimatePresence>
-        {uploadSuccess && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2"
-          >
-            <CheckCircle2 size={20} />
-            <span className="font-medium">Đã tải ảnh lên! Sếp có thể tắt app, kết quả sẽ tự lưu vào lịch sử.</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <header className="glass-panel fixed top-0 left-0 right-0 z-20 border-b-0 border-white/40 safe-area-pt">
-        <div className="max-w-4xl mx-auto px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
-            <Logo 
-              className="h-12 sm:h-16 w-auto transition-transform hover:scale-105 active:scale-95" 
-              onClick={reset}
-            />
-            <div 
-              className="hidden flex items-center gap-2 sm:gap-3 min-w-0 shrink-0 cursor-pointer transition-transform hover:scale-105 active:scale-95"
-              onClick={reset}
-              title="Làm mới ứng dụng"
+      {!isSearching && (
+        <AnimatePresence>
+          {uploadSuccess && (
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2"
             >
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-primary rounded-[16px] sm:rounded-[20px] flex items-center justify-center text-white shadow-[0_8px_16px_rgba(244,63,94,0.2)] shrink-0">
-                <Calculator size={18} className="sm:w-[22px] sm:h-[22px]" strokeWidth={1.5} />
+              <CheckCircle2 size={20} />
+              <span className="font-medium">Đã tải ảnh lên! Sếp có thể tắt app, kết quả sẽ tự lưu vào lịch sử.</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+
+      {!isSearching && (
+        <header className="glass-panel fixed top-0 left-0 right-0 z-20 border-b-0 border-white/40 safe-area-pt">
+          <div className="max-w-4xl mx-auto px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+              <Logo 
+                className="h-12 sm:h-16 w-auto transition-transform hover:scale-105 active:scale-95" 
+                onClick={reset}
+              />
+              <div 
+                className="hidden flex items-center gap-2 sm:gap-3 min-w-0 shrink-0 cursor-pointer transition-transform hover:scale-105 active:scale-95"
+                onClick={reset}
+                title="Làm mới ứng dụng"
+              >
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-primary rounded-[16px] sm:rounded-[20px] flex items-center justify-center text-white shadow-[0_8px_16px_rgba(244,63,94,0.2)] shrink-0">
+                  <Calculator size={18} className="sm:w-[22px] sm:h-[22px]" strokeWidth={1.5} />
+                </div>
+                <h1 className="text-base sm:text-xl font-semibold tracking-tight truncate hidden xs:block">Tính Toán</h1>
               </div>
-              <h1 className="text-base sm:text-xl font-semibold tracking-tight truncate hidden xs:block">Tính Toán</h1>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              {serverKey ? (
+                <div className="flex items-center gap-1.5 px-2 py-1.5 sm:px-4 sm:py-2 bg-green-500/10 text-green-700 rounded-full text-[11px] sm:text-xs font-medium border border-green-500/20 backdrop-blur-md" title="Hệ thống đã kết nối">
+                  <CheckCircle2 size={14} strokeWidth={1.5} />
+                  <span className="hidden sm:inline">Hệ thống đã kết nối</span>
+                </div>
+              ) : hasAIStudioKey === false && window.aistudio && (
+                <button
+                  onClick={handleOpenAIStudioKey}
+                  className="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-amber-500/10 text-amber-700 rounded-full text-[12px] sm:text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 backdrop-blur-md active:scale-[0.97]"
+                  title="Chọn API Key"
+                >
+                  <Key size={14} className="sm:w-4 sm:h-4" strokeWidth={1.5} />
+                  <span className="hidden sm:inline">Chọn API Key</span>
+                </button>
+              )}
+              <button
+                onClick={() => setShowSettings(true)}
+                className={cn(
+                  "flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-4 sm:py-2 rounded-full text-[12px] sm:text-sm font-medium transition-all border backdrop-blur-md active:scale-[0.97]",
+                  manualKey 
+                    ? "bg-rose-500/10 text-rose-700 border-rose-500/20 hover:bg-rose-500/20" 
+                    : "bg-white/50 text-gray-700 border-white/60 hover:bg-white/80"
+                )}
+                title="Cấu hình API Key"
+              >
+                <Settings size={14} className="sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">{manualKey ? 'Custom API' : 'Cấu hình API'}</span>
+              </button>
+              {user ? (
+                <div className="flex items-center gap-1.5 sm:gap-3">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-white shadow-sm" />
+                    <button onClick={logout} className="p-1.5 sm:p-2 hover:bg-red-500/10 text-red-500 rounded-full transition-all active:scale-[0.97]" title="Đăng xuất">
+                      <LogOut size={18} className="sm:w-5 sm:h-5" strokeWidth={1.5} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={login}
+                  className="relative group flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-2.5 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-full text-sm font-bold transition-all shadow-[0_8px_16px_rgba(244,63,94,0.3)] hover:shadow-[0_12px_24px_rgba(244,63,94,0.5)] hover:-translate-y-0.5 active:scale-[0.97]"
+                >
+                  <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 opacity-30 blur-sm group-hover:opacity-50 transition-opacity animate-pulse"></div>
+                  <LogIn size={18} strokeWidth={2.5} className="relative z-10" />
+                  <span className="relative z-10">ĐĂNG NHẬP</span>
+                </button>
+              )}
+              {images.length > 0 && (
+                <button
+                  onClick={reset}
+                  className="p-1.5 sm:p-2 hover:bg-white/60 rounded-full transition-all text-[#666] active:scale-[0.97]"
+                  title="Xóa tất cả"
+                >
+                  <RefreshCw size={16} className="sm:w-5 sm:h-5" strokeWidth={1.5} />
+                </button>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {serverKey ? (
-              <div className="flex items-center gap-1.5 px-2 py-1.5 sm:px-4 sm:py-2 bg-green-500/10 text-green-700 rounded-full text-[11px] sm:text-xs font-medium border border-green-500/20 backdrop-blur-md" title="Hệ thống đã kết nối">
-                <CheckCircle2 size={14} strokeWidth={1.5} />
-                <span className="hidden sm:inline">Hệ thống đã kết nối</span>
-              </div>
-            ) : hasAIStudioKey === false && window.aistudio && (
-              <button
-                onClick={handleOpenAIStudioKey}
-                className="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-4 sm:py-2 bg-amber-500/10 text-amber-700 rounded-full text-[12px] sm:text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 backdrop-blur-md active:scale-[0.97]"
-                title="Chọn API Key"
-              >
-                <Key size={14} className="sm:w-4 sm:h-4" strokeWidth={1.5} />
-                <span className="hidden sm:inline">Chọn API Key</span>
-              </button>
-            )}
-            <button
-              onClick={() => setShowSettings(true)}
-              className={cn(
-                "flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-4 sm:py-2 rounded-full text-[12px] sm:text-sm font-medium transition-all border backdrop-blur-md active:scale-[0.97]",
-                manualKey 
-                  ? "bg-rose-500/10 text-rose-700 border-rose-500/20 hover:bg-rose-500/20" 
-                  : "bg-white/50 text-gray-700 border-white/60 hover:bg-white/80"
-              )}
-              title="Cấu hình API Key"
-            >
-              <Settings size={14} className="sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">{manualKey ? 'Custom API' : 'Cấu hình API'}</span>
-            </button>
-            {user ? (
-              <div className="flex items-center gap-1.5 sm:gap-3">
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-white shadow-sm" />
-                  <button onClick={logout} className="p-1.5 sm:p-2 hover:bg-red-500/10 text-red-500 rounded-full transition-all active:scale-[0.97]" title="Đăng xuất">
-                    <LogOut size={18} className="sm:w-5 sm:h-5" strokeWidth={1.5} />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={login}
-                className="relative group flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-2.5 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-full text-sm font-bold transition-all shadow-[0_8px_16px_rgba(244,63,94,0.3)] hover:shadow-[0_12px_24px_rgba(244,63,94,0.5)] hover:-translate-y-0.5 active:scale-[0.97]"
-              >
-                <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 opacity-30 blur-sm group-hover:opacity-50 transition-opacity animate-pulse"></div>
-                <LogIn size={18} strokeWidth={2.5} className="relative z-10" />
-                <span className="relative z-10">ĐĂNG NHẬP</span>
-              </button>
-            )}
-            {images.length > 0 && (
-              <button
-                onClick={reset}
-                className="p-1.5 sm:p-2 hover:bg-white/60 rounded-full transition-all text-[#666] active:scale-[0.97]"
-                title="Xóa tất cả"
-              >
-                <RefreshCw size={16} className="sm:w-5 sm:h-5" strokeWidth={1.5} />
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
-      <main className="max-w-4xl mx-auto px-4 pb-6 pt-[calc(env(safe-area-inset-top)+6rem)] sm:px-6 sm:pb-12 sm:pt-[calc(env(safe-area-inset-top)+8rem)]">
+      <main className={cn(
+        "max-w-4xl mx-auto px-4 pb-6 sm:px-6 sm:pb-12 transition-all duration-300",
+        isSearching ? "pt-6" : "pt-[calc(env(safe-area-inset-top)+6rem)] sm:pt-[calc(env(safe-area-inset-top)+8rem)]"
+      )}>
         <div className="grid gap-8 sm:gap-12">
           {/* Action Area */}
-          <section className="space-y-6 sm:space-y-8">
+          {!isSearching && (
+            <section className="space-y-6 sm:space-y-8">
             <div className="text-center space-y-2">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight md:text-4xl bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 drop-shadow-sm">Tính Toán Hóa Đơn</h2>
               <p className="text-[#666] max-w-lg mx-auto text-sm sm:text-base">
@@ -2118,6 +2183,7 @@ export default function App() {
               </div>
             )}
           </section>
+        )}
 
           {/* Results Area */}
           <AnimatePresence>
@@ -2463,8 +2529,51 @@ export default function App() {
             >
               <div className="p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md">
                 <h3 className="text-xl font-semibold tracking-tight">Lịch sử phân tích</h3>
+                <div className="flex items-center gap-2">
+                  {history.length > 0 && (
+                    <button
+                      onClick={() => setShowDeleteAllHistoryConfirm(!showDeleteAllHistoryConfirm)}
+                      className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Xóa toàn bộ lịch sử"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setShowHistory(false)}
+                    className="p-2 hover:bg-white/40 rounded-full transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
               <div id="history-drawer-content" className="flex-1 overflow-y-auto p-6 space-y-4">
+                {showDeleteAllHistoryConfirm && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="bg-red-50 border border-red-100 rounded-2xl p-4 mb-4"
+                  >
+                    <p className="text-xs text-red-800 font-medium mb-3">Xác nhận xóa toàn bộ lịch sử? Hành động này không thể hoàn tác.</p>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={isDeletingAllHistory}
+                        onClick={handleDeleteAllHistory}
+                        className="flex-1 py-2 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition-all disabled:opacity-50"
+                      >
+                        {isDeletingAllHistory ? 'Đang xóa...' : 'Xác nhận xóa'}
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteAllHistoryConfirm(false)}
+                        className="flex-1 py-2 bg-white text-gray-600 text-xs font-bold rounded-xl border border-gray-200 hover:bg-gray-50 transition-all"
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+
                 {history.length === 0 ? (
                   <div className="text-center py-12 text-[#999]">
                     <History size={48} strokeWidth={1.5} className="mx-auto mb-4 opacity-20" />
@@ -2514,21 +2623,23 @@ export default function App() {
                         </div>
                       </div>
                       <button
-                        onClick={(e) => deleteHistoryItem(item.id, e)}
-                        className="absolute top-2 right-2 p-2 text-red-400 sm:opacity-0 sm:group-hover:opacity-100 hover:text-red-600 transition-all active:scale-[0.97]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteHistory(item.id);
+                        }}
+                        className="absolute top-2 right-2 p-2 text-gray-400 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 transition-all z-10"
                       >
-                        <Trash2 size={16} strokeWidth={1.5} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
+                  )))}
+                </div>
             </motion.div>
           </>
         )}
       </AnimatePresence>
 
-      {/* Products Drawer */}
+      {/* Product Drawer */}
       <AnimatePresence>
         {showProducts && (
           <>
@@ -2540,263 +2651,329 @@ export default function App() {
               className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 will-change-opacity"
             />
             <motion.div
-              initial={{ y: '100%', opacity: 0.5 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: '100%', opacity: 0 }}
+              initial={{ x: '100%', opacity: 0.5 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: '100%', opacity: 0 }}
               transition={{ type: 'tween', duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
-              className="fixed inset-0 glass-panel z-40 flex flex-col safe-area-pt shadow-2xl overflow-hidden border-t border-white/40 will-change-transform"
+              className="fixed top-0 right-0 bottom-0 w-[85vw] sm:max-w-md glass-panel z-40 border-l border-white/40 flex flex-col safe-area-pt shadow-2xl will-change-transform"
             >
               <div className="p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md">
-                <h3 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-                  <Package size={32} className="text-blue-500" />
-                  Kho sản phẩm
-                </h3>
+                <h3 className="text-xl font-semibold tracking-tight">Kho sản phẩm</h3>
                 <button 
                   onClick={() => setShowProducts(false)}
-                  className="p-2 hover:bg-black/5 rounded-full transition-colors"
+                  className="p-2 hover:bg-white/40 rounded-full transition-colors"
                 >
-                  <X size={28} />
+                  <X size={20} />
                 </button>
               </div>
-              <div id="products-drawer-content" className="flex-1 overflow-y-auto p-6 space-y-8 max-w-5xl mx-auto w-full">
-                {/* Excel Upload Section */}
-                {isAdmin && (
-                  <div className="space-y-4">
-                    <div className="bg-white/60 p-4 rounded-2xl border border-white/80 shadow-sm space-y-3">
-                      <h4 className="font-semibold text-sm text-gray-700 flex items-center gap-2">
-                        <PlusCircle size={16} className="text-blue-600" />
-                        Thêm sản phẩm thủ công
-                      </h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input 
-                          type="text" 
-                          placeholder="Tên nệm" 
-                          id="new-p-name"
-                          className="col-span-2 px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
-                        />
-                        <input 
-                          type="text" 
-                          placeholder="Kích thước (vd: 1m6x2m)" 
-                          id="new-p-size"
-                          className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
-                        />
-                        <input 
-                          type="text" 
-                          placeholder="Độ dày (vd: 10cm)" 
-                          id="new-p-thickness"
-                          className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
-                        />
-                        <input 
-                          type="number" 
-                          placeholder="Giá bán" 
-                          id="new-p-price"
-                          className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
-                        />
-                        <input 
-                          type="text" 
-                          placeholder="Đơn vị (vd: Cái)" 
-                          id="new-p-unit"
-                          className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
-                        />
-                        <textarea 
-                          placeholder="Thuộc tính khác (VD: Màu: Xanh; Chất liệu: Cao su)" 
-                          id="new-p-attrs"
-                          className="col-span-2 px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500 min-h-[60px]"
-                        />
-                      </div>
-                      <button
-                        onClick={async () => {
-                          const name = (document.getElementById('new-p-name') as HTMLInputElement).value;
-                          const price = parseInt((document.getElementById('new-p-price') as HTMLInputElement).value);
-                          const size = (document.getElementById('new-p-size') as HTMLInputElement).value;
-                          const thickness = (document.getElementById('new-p-thickness') as HTMLInputElement).value;
-                          const unit = (document.getElementById('new-p-unit') as HTMLInputElement).value;
-                          const attrsStr = (document.getElementById('new-p-attrs') as HTMLTextAreaElement).value;
-                          
-                          if (!name || isNaN(price)) {
-                            alert("Vui lòng nhập ít nhất tên và giá!");
-                            return;
-                          }
-                          
-                          setIsSavingProduct(true);
-                          try {
-                            const attrs: Record<string, string> = {};
-                            if (attrsStr) {
-                              attrsStr.split(/[;,\n|]/).forEach(p => {
-                                const [k, v] = p.split(':').map(s => s.trim());
-                                if (k && v) attrs[k] = v;
-                                else if (k) attrs[k] = 'Có';
-                              });
-                            }
-
-                            let fullName = name;
-                            if (size && !fullName.toLowerCase().includes(size.toLowerCase())) fullName += ` ${size}`;
-                            if (thickness && !fullName.toLowerCase().includes(thickness.toLowerCase())) fullName += ` ${thickness}`;
-                            
-                            await addDoc(collection(db, 'products'), {
-                              uid: user!.uid,
-                              name: fullName,
-                              price,
-                              size,
-                              thickness,
-                              unit,
-                              attributes: attrs,
-                              createdAt: serverTimestamp(),
-                              updatedAt: serverTimestamp()
-                            });
-                            
-                            (document.getElementById('new-p-name') as HTMLInputElement).value = '';
-                            (document.getElementById('new-p-price') as HTMLInputElement).value = '';
-                            (document.getElementById('new-p-size') as HTMLInputElement).value = '';
-                            (document.getElementById('new-p-thickness') as HTMLInputElement).value = '';
-                            (document.getElementById('new-p-unit') as HTMLInputElement).value = '';
-                            (document.getElementById('new-p-attrs') as HTMLTextAreaElement).value = '';
-                            
-                          } catch (err) {
-                            console.error(err);
-                          } finally {
-                            setIsSavingProduct(false);
-                          }
+              <div id="product-drawer-content" className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Search Bar (Compact) */}
+                <div className={cn(
+                  "sticky top-0 z-10 bg-white/80 backdrop-blur-md p-2 -mx-6 mb-2 border-b border-white/40 transition-all",
+                  isSearching && "bg-white shadow-sm"
+                )}>
+                  <div className="relative flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input 
+                        type="text" 
+                        placeholder="Tìm kiếm nhanh..." 
+                        value={searchQuery}
+                        onFocus={() => setIsSearching(true)}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-4 py-1.5 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all bg-white shadow-sm"
+                      />
+                    </div>
+                    {isSearching && (
+                      <button 
+                        onClick={() => {
+                          setIsSearching(false);
+                          setSearchQuery('');
                         }}
-                        disabled={isSavingProduct}
-                        className="w-full bg-blue-500 text-white font-semibold py-2.5 rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+                        className="px-2 py-1 text-[10px] font-bold text-gray-500 hover:text-rose-500 transition-colors"
                       >
-                        {isSavingProduct ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                        Thêm vào kho
+                        Hủy
                       </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Admin Controls Section */}
+                {isAdmin && !isSearching && (
+                  <div className="grid grid-cols-1 gap-2">
+                    {/* Manual Add Button */}
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => setShowManualAdd(!showManualAdd)}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-white/60 rounded-xl border border-white/80 shadow-sm hover:bg-white/80 transition-all"
+                      >
+                        <div className="flex items-center gap-2 font-bold text-xs text-gray-700">
+                          <PlusCircle size={14} className="text-blue-600" />
+                          Thêm sản phẩm thủ công
+                        </div>
+                        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", showManualAdd && "rotate-180")} />
+                      </button>
+
+                      <AnimatePresence>
+                        {showManualAdd && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="bg-white/60 p-4 rounded-xl border border-white/80 shadow-sm space-y-3 mb-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <input 
+                                  type="text" 
+                                  placeholder="Tên nệm" 
+                                  id="new-p-name"
+                                  className="col-span-2 px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500"
+                                />
+                                <input 
+                                  type="text" 
+                                  placeholder="Kích thước (vd: 1m6x2m)" 
+                                  id="new-p-size"
+                                  className="px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500"
+                                />
+                                <input 
+                                  type="text" 
+                                  placeholder="Độ dày (vd: 10cm)" 
+                                  id="new-p-thickness"
+                                  className="px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500"
+                                />
+                                <input 
+                                  type="number" 
+                                  placeholder="Giá bán" 
+                                  id="new-p-price"
+                                  className="px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500"
+                                />
+                                <input 
+                                  type="text" 
+                                  placeholder="Đơn vị (vd: Cái)" 
+                                  id="new-p-unit"
+                                  className="px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500"
+                                />
+                                <textarea 
+                                  placeholder="Thuộc tính khác (VD: Màu: Xanh; Chất liệu: Cao su)" 
+                                  id="new-p-attrs"
+                                  className="col-span-2 px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500 min-h-[60px]"
+                                />
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  const name = (document.getElementById('new-p-name') as HTMLInputElement).value;
+                                  const price = parseInt((document.getElementById('new-p-price') as HTMLInputElement).value);
+                                  const size = (document.getElementById('new-p-size') as HTMLInputElement).value;
+                                  const thickness = (document.getElementById('new-p-thickness') as HTMLInputElement).value;
+                                  const unit = (document.getElementById('new-p-unit') as HTMLInputElement).value;
+                                  const attrsStr = (document.getElementById('new-p-attrs') as HTMLTextAreaElement).value;
+                                  
+                                  if (!name || isNaN(price)) {
+                                    alert("Vui lòng nhập ít nhất tên và giá!");
+                                    return;
+                                  }
+                                  
+                                  setIsSavingProduct(true);
+                                  try {
+                                    const attrs: Record<string, string> = {};
+                                    if (attrsStr) {
+                                      attrsStr.split(/[;,\n|]/).forEach(p => {
+                                        const [k, v] = p.split(':').map(s => s.trim());
+                                        if (k && v) attrs[k] = v;
+                                        else if (k) attrs[k] = 'Có';
+                                      });
+                                    }
+
+                                    let fullName = name;
+                                    if (size && !fullName.toLowerCase().includes(size.toLowerCase())) fullName += ` ${size}`;
+                                    if (thickness && !fullName.toLowerCase().includes(thickness.toLowerCase())) fullName += ` ${thickness}`;
+                                    
+                                    await addDoc(collection(db, 'products'), {
+                                      uid: user!.uid,
+                                      name: fullName,
+                                      price,
+                                      size,
+                                      thickness,
+                                      unit,
+                                      attributes: attrs,
+                                      createdAt: serverTimestamp(),
+                                      updatedAt: serverTimestamp()
+                                    });
+                                    
+                                    (document.getElementById('new-p-name') as HTMLInputElement).value = '';
+                                    (document.getElementById('new-p-price') as HTMLInputElement).value = '';
+                                    (document.getElementById('new-p-size') as HTMLInputElement).value = '';
+                                    (document.getElementById('new-p-thickness') as HTMLInputElement).value = '';
+                                    (document.getElementById('new-p-unit') as HTMLInputElement).value = '';
+                                    (document.getElementById('new-p-attrs') as HTMLTextAreaElement).value = '';
+                                    
+                                  } catch (err) {
+                                    console.error(err);
+                                  } finally {
+                                    setIsSavingProduct(false);
+                                  }
+                                }}
+                                disabled={isSavingProduct}
+                                className="w-full bg-blue-500 text-white font-bold py-2 rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-xs"
+                              >
+                                {isSavingProduct ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                Thêm vào kho
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
 
-                    <div className="bg-white/60 p-4 rounded-2xl border border-white/80 shadow-sm space-y-3">
-                      <h4 className="font-semibold text-sm text-gray-700 flex items-center gap-2">
-                        <FileText size={16} className="text-green-600" />
-                        Thêm hàng loạt từ Excel
-                      </h4>
-                      <p className="text-xs text-gray-500">
-                        Tải lên file .xlsx chứa danh sách sản phẩm. File cần có các cột: <b>Tên sản phẩm</b>, <b>Giá Bán Chung</b>, <b>Kích Thước</b>, <b>Độ Dày</b>, <b>Đơn Vị Tính</b>.
-                      </p>
-                    <button
-                      onClick={() => excelInputRef.current?.click()}
-                      disabled={isSavingProduct}
-                      className="w-full bg-green-500/10 text-green-700 font-semibold py-2.5 rounded-xl hover:bg-green-500/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm border border-green-500/20"
-                    >
-                      {isSavingProduct ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                      Chọn file Excel
-                    </button>
-                    {isAdmin && (
-                      !showDeleteAllConfirm ? (
+                    {/* Bulk Upload & Delete Section */}
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => setShowBulkUpload(!showBulkUpload)}
+                        className="w-full flex items-center justify-between px-4 py-3 bg-white/60 rounded-xl border border-white/80 shadow-sm hover:bg-white/80 transition-all"
+                      >
+                        <div className="flex items-center gap-2 font-bold text-xs text-gray-700">
+                          <FileText size={14} className="text-green-600" />
+                          Thêm hàng loạt từ Excel
+                        </div>
+                        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", showBulkUpload && "rotate-180")} />
+                      </button>
+
+                      <AnimatePresence>
+                        {showBulkUpload && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="bg-white/60 p-4 rounded-xl border border-white/80 shadow-sm space-y-3 mb-2">
+                              <p className="text-[10px] text-gray-500 leading-relaxed">
+                                Tải lên file .xlsx chứa danh sách sản phẩm. File cần có các cột: <b>Tên sản phẩm</b>, <b>Giá Bán Chung</b>, <b>Kích Thước</b>, <b>Độ Dày</b>, <b>Đơn Vị Tính</b>.
+                              </p>
+                              <button
+                                onClick={() => excelInputRef.current?.click()}
+                                disabled={isSavingProduct}
+                                className="w-full bg-green-500/10 text-green-700 font-bold py-2 rounded-xl hover:bg-green-500/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-xs border border-green-500/20"
+                              >
+                                {isSavingProduct ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                Chọn file Excel
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {!showDeleteAllConfirm ? (
                         <button
                           onClick={() => setShowDeleteAllConfirm(true)}
                           disabled={isSavingProduct || products.length === 0}
-                          className="w-full bg-red-500/10 text-red-700 font-semibold py-2.5 rounded-xl hover:bg-red-500/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm border border-red-500/20 mt-2"
+                          className="w-full bg-red-500/10 text-red-700 font-bold py-2 rounded-xl hover:bg-red-500/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-xs border border-red-500/20"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={14} />
                           Xóa toàn bộ sản phẩm
                         </button>
                       ) : (
-                        <div className="bg-red-50 p-3 rounded-xl border border-red-100 space-y-2 mt-2">
-                          <p className="text-[11px] text-red-600 font-bold text-center uppercase tracking-wider">Xác nhận xóa sạch kho hàng?</p>
+                        <div className="bg-red-50 p-3 rounded-xl border border-red-100 space-y-2">
+                          <p className="text-[10px] text-red-600 font-bold text-center uppercase tracking-wider">Xác nhận xóa sạch kho hàng?</p>
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleDeleteAllProducts()}
                               disabled={isSavingProduct}
-                              className="flex-1 bg-red-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
+                              className="flex-1 bg-red-500 text-white text-[10px] font-bold py-2 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
                             >
-                              {isSavingProduct ? <Loader2 size={14} className="animate-spin" /> : 'Xóa hết'}
+                              {isSavingProduct ? <Loader2 size={12} className="animate-spin" /> : 'Xóa hết'}
                             </button>
                             <button
                               onClick={() => setShowDeleteAllConfirm(false)}
                               disabled={isSavingProduct}
-                              className="flex-1 bg-white text-gray-600 text-xs font-bold py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                              className="flex-1 bg-white text-gray-600 text-[10px] font-bold py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
                             >
                               Hủy
                             </button>
                           </div>
                         </div>
-                      )
-                    )}
-                    <input
-                      type="file"
-                      ref={excelInputRef}
-                      onChange={handleExcelUpload}
-                      accept=".xlsx, .xls"
-                      className="hidden"
-                    />
+                      )}
+                      <input
+                        type="file"
+                        ref={excelInputRef}
+                        onChange={handleExcelUpload}
+                        accept=".xlsx, .xls"
+                        className="hidden"
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
                 {/* Chatbot Knowledge Section (Admin Only) */}
-                {isAdmin && (
-                  <div className="bg-white/60 p-4 rounded-2xl border border-white/80 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
-                          <Edit3 size={16} />
-                        </div>
-                        <h4 className="font-semibold text-sm text-gray-700">Dạy chatbot thông tin mới</h4>
-                      </div>
-                      {chatbotKnowledge && (
-                        <button 
-                          onClick={() => setChatbotKnowledge('')}
-                          className="text-[10px] font-bold text-red-500 hover:text-red-600 flex items-center gap-1 bg-red-50 px-2 py-1 rounded-lg transition-colors"
-                        >
-                          <X size={12} />
-                          XÓA NHANH
-                        </button>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <textarea
-                        placeholder="Nhập các thông tin bạn muốn chatbot ghi nhớ (VD: Chính sách bảo hành, khuyến mãi hiện tại, thông tin về các loại nệm...)"
-                        value={chatbotKnowledge}
-                        onChange={(e) => setChatbotKnowledge(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-sm transition-all bg-white min-h-[120px] resize-none pr-8"
-                      />
-                      {chatbotKnowledge && (
-                        <button 
-                          onClick={() => setChatbotKnowledge('')}
-                          className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 transition-colors"
-                          title="Xóa nội dung"
-                        >
-                          <X size={16} />
-                        </button>
-                      )}
-                    </div>
+                {isAdmin && !isSearching && (
+                  <div className="space-y-2">
                     <button
-                      onClick={async () => {
-                        await handleSaveKnowledge();
-                        setChatbotKnowledge('');
-                      }}
-                      disabled={isSavingKnowledge || !chatbotKnowledge.trim()}
-                      className="w-full bg-blue-500 text-white font-semibold py-2 rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+                      onClick={() => setShowChatbotKnowledge(!showChatbotKnowledge)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-white/60 rounded-xl border border-white/80 shadow-sm hover:bg-white/80 transition-all"
                     >
-                      {isSavingKnowledge ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                      Lưu thông tin dạy chatbot
+                      <div className="flex items-center gap-2 font-bold text-xs text-gray-700">
+                        <Edit3 size={14} className="text-blue-600" />
+                        Dạy chatbot thông tin mới
+                      </div>
+                      <ChevronDown size={14} className={cn("text-gray-400 transition-transform", showChatbotKnowledge && "rotate-180")} />
                     </button>
+
+                    <AnimatePresence>
+                      {showChatbotKnowledge && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="bg-white/60 p-4 rounded-xl border border-white/80 shadow-sm space-y-3 mb-2">
+                            <div className="relative">
+                              <textarea
+                                placeholder="Nhập các thông tin bạn muốn chatbot ghi nhớ..."
+                                value={chatbotKnowledge}
+                                onChange={(e) => setChatbotKnowledge(e.target.value)}
+                                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-xs transition-all bg-white min-h-[100px] resize-none pr-8"
+                              />
+                              {chatbotKnowledge && (
+                                <button 
+                                  onClick={() => setChatbotKnowledge('')}
+                                  className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 transition-colors"
+                                  title="Xóa nội dung"
+                                >
+                                  <X size={14} />
+                                </button>
+                              )}
+                            </div>
+                            <button
+                              onClick={async () => {
+                                await handleSaveKnowledge();
+                                setChatbotKnowledge('');
+                              }}
+                              disabled={isSavingKnowledge || !chatbotKnowledge.trim()}
+                              className="w-full bg-blue-500 text-white font-bold py-2 rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-xs"
+                            >
+                              {isSavingKnowledge ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                              Lưu thông tin dạy chatbot
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
 
                 {/* Product List */}
                 <div className="space-y-3">
-                  <div className="flex flex-col gap-3">
-                    <h4 className="font-semibold text-sm text-gray-700 flex items-center justify-between">
-                      Danh sách sản phẩm
-                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{products.length}</span>
-                    </h4>
-                    
-                    {/* Search Bar */}
-                    <div className="relative">
-                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input 
-                        type="text" 
-                        placeholder="Tìm kiếm sản phẩm..." 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500 transition-all bg-white/50"
-                      />
+                  {!isSearching && (
+                    <div className="flex flex-col gap-3">
+                      <h4 className="font-semibold text-sm text-gray-700 flex items-center justify-between">
+                        Danh sách sản phẩm
+                        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{products.length}</span>
+                      </h4>
                     </div>
-                  </div>
-
+                  )}
+                  
                   {products.length === 0 ? (
                     <div className="text-center py-8 text-[#999]">
                       <Package size={40} strokeWidth={1.5} className="mx-auto mb-3 opacity-20" />
@@ -2942,8 +3119,7 @@ export default function App() {
                           </>
                         )}
                       </div>
-                    ))
-                  )}
+                    )))}
                 </div>
               </div>
             </motion.div>
@@ -2952,12 +3128,14 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer */}
-      <footer className="max-w-4xl mx-auto px-6 pt-32 pb-48 text-center text-sm flex flex-col items-center gap-6">
-        <LuckyCat className="w-16 h-16 sm:w-24 sm:h-24" />
-        <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
-          © 2026 Mận Quý • Powered by Dephia
-        </p>
-      </footer>
+      {!isSearching && (
+        <footer className="max-w-4xl mx-auto px-6 pt-32 pb-48 text-center text-sm flex flex-col items-center gap-6">
+          <LuckyCat className="w-16 h-16 sm:w-24 sm:h-24" />
+          <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
+            © 2026 Mận Quý • Powered by Dephia
+          </p>
+        </footer>
+      )}
 
       {/* Chatbot UI */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
@@ -3090,22 +3268,20 @@ export default function App() {
               )}
             </button>
           )}
-          {isAdmin && (
-            <button
-              onClick={() => setShowProducts(!showProducts)}
-              className={cn(
-                "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95",
-                showProducts ? "bg-gray-800" : "bg-blue-600 shadow-[0_8px_16px_rgba(37,99,235,0.3)]"
-              )}
-              title={showProducts ? "Đóng kho hàng" : "Mở kho hàng"}
-            >
-              {showProducts ? <X size={28} /> : <Package size={28} />}
-            </button>
-          )}
+          <button
+            onClick={() => setShowProducts(!showProducts)}
+            className={cn(
+              "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95",
+              showProducts ? "bg-gray-800" : "bg-blue-600 shadow-[0_8px_16px_rgba(37,99,235,0.3)]"
+            )}
+            title={showProducts ? "Đóng kho hàng" : "Mở kho hàng"}
+          >
+            {showProducts ? <X size={28} /> : <Package size={28} />}
+          </button>
           <button
             onClick={() => {
               if (showProducts) {
-                document.getElementById('products-drawer-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+                document.getElementById('product-drawer-content')?.scrollTo({ top: 0, behavior: 'smooth' });
               } else if (showHistory) {
                 document.getElementById('history-drawer-content')?.scrollTo({ top: 0, behavior: 'smooth' });
               } else if (isChatOpen) {
