@@ -2947,7 +2947,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto px-6 pt-32 pb-48 text-center text-sm flex flex-col items-center gap-6">
-        <LuckyCat className="w-8 h-8 sm:w-12 sm:h-12" />
+        <LuckyCat className="w-16 h-16 sm:w-24 sm:h-24" />
         <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
           © 2026 Mận Quý • Powered by Dephia
         </p>
