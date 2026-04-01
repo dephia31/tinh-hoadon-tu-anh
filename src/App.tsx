@@ -2485,9 +2485,8 @@ export default function App() {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed bottom-0 left-0 right-0 h-[90vh] glass-panel z-40 flex flex-col safe-area-pt shadow-2xl overflow-hidden rounded-t-[32px] border-t border-white/40"
+              className="fixed inset-0 glass-panel z-40 flex flex-col safe-area-pt shadow-2xl overflow-hidden border-t border-white/40"
             >
-              <div className="w-12 h-1.5 bg-gray-300/50 rounded-full mx-auto mt-3 mb-1 shrink-0" />
               <div className="p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md">
                 <h3 className="text-2xl font-bold tracking-tight flex items-center gap-3">
                   <Package size={32} className="text-blue-500" />
