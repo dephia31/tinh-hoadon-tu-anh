@@ -2964,13 +2964,12 @@ export default function App() {
             repeat: Infinity,
             ease: "easeInOut"
           }}
-          className="w-12 h-12 sm:w-16 sm:h-16"
+          className="w-8 h-8 sm:w-12 sm:h-12"
         >
           <img 
-            src="/api/attachments/AIS_IMG_20260401_083857.png" 
+            src="https://img.icons8.com/color/512/maneki-neko.png" 
             alt="Mèo thần tài" 
-            className="w-full h-full object-contain drop-shadow-lg"
-            referrerPolicy="no-referrer"
+            className="w-full h-full object-contain drop-shadow-md"
           />
         </motion.div>
         <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
