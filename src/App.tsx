@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp } from 'lucide-react';
+import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp, Package, Plus, Search, PlusCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { GoogleGenAI, Type } from "@google/genai";
 import { cn } from './lib/utils';
+import * as XLSX from 'xlsx';
 
 // Firebase imports
 import { auth, db } from './firebase';
@@ -26,7 +27,9 @@ import {
   doc, 
   updateDoc,
   serverTimestamp,
-  getDocFromServer
+  getDocFromServer,
+  limit,
+  getDocs
 } from 'firebase/firestore';
 
 // Initialize Gemini helper
@@ -94,6 +97,22 @@ interface HistoryItem {
   correction?: string;
   timestamp: any;
   status?: 'processing' | 'completed' | 'failed';
+}
+
+interface Product {
+  id: string;
+  uid: string;
+  name: string;
+  price: number;
+  wholesalePrice?: number;
+  size?: string;
+  thickness?: string;
+  unit?: string;
+  attributes?: Record<string, string>;
+  description?: string;
+  category?: string;
+  createdAt: any;
+  updatedAt?: any;
 }
 
 interface Adjustment {
@@ -387,14 +406,32 @@ interface FirestoreErrorInfo {
   authInfo: any;
 }
 
-const processImagesWithGemini = async (imgs: string[], aiInstance: any): Promise<string> => {
+const processImagesWithGemini = async (imgs: string[], aiInstance: any, products: Product[] = []): Promise<string> => {
+  const productListStr = products.length > 0 
+    ? "\n\nDANH SÁCH SẢN PHẨM THAM KHẢO (Hãy ưu tiên nhận diện tên hàng theo danh sách này nếu khớp):\n" + 
+      products.map(p => {
+        let fullName = p.name || "Sản phẩm không tên";
+        if (p.size && fullName.toLowerCase && !fullName.toLowerCase().includes(p.size.toLowerCase())) fullName += ` ${p.size}`;
+        if (p.thickness && fullName.toLowerCase && !fullName.toLowerCase().includes(p.thickness.toLowerCase())) fullName += ` ${p.thickness}`;
+        
+        let attrStr = "";
+        if (p.attributes) {
+          const attrs = Object.entries(p.attributes).map(([k, v]) => v === 'Có' ? k : `${k}: ${v}`).join(', ');
+          if (attrs) attrStr = ` [Thuộc tính: ${attrs}]`;
+        }
+        
+        return `- ${fullName}${attrStr} (Giá: ${p.price}${p.unit ? `/${p.unit}` : ''})`;
+      }).join('\n')
+    : "";
+
   const parts: any[] = [
     {
       text: `Hãy trích xuất chính xác các con số được viết trên hình ảnh hóa đơn này. Nếu có nhiều hình ảnh hóa đơn, hãy trích xuất riêng biệt từng hóa đơn vào mảng 'invoices'.
       YÊU CẦU QUAN TRỌNG:
       1. Bỏ qua thông tin cửa hàng, địa chỉ, số điện thoại.
       2. CHỈ TRÍCH XUẤT, KHÔNG TỰ TÍNH TOÁN LẠI. Nếu trên giấy viết sai toán học (ví dụ 20 x 85 = 1100), bạn BẮT BUỘC phải trích xuất đúng con số 1100 đã viết trên giấy vào trường 'amountWritten'. KHÔNG ĐƯỢC tự sửa thành 1700.
-      3. Trích xuất các mặt hàng: Tên, Số lượng, Đơn giá, và Thành tiền (con số ghi ở cuối mỗi dòng).
+      3. Trích xuất các mặt hàng: Tên (BẮT BUỘC phải bao gồm kích thước, độ dày nếu có trên hóa đơn), Số lượng, Đơn giá, và Thành tiền (con số ghi ở cuối mỗi dòng).
+      ${productListStr}
       4. Trích xuất phần Tổng cộng:
          - 'subTotalWritten': Tổng tiền hàng hóa (kết quả cộng các dòng hàng). CHÚ Ý: Đôi khi tổng tiền chỉ được ghi ở dòng cuối cùng với chữ "Nhận", "Cộng", "Tổng", "TC", hoặc chỉ là một con số nằm dưới đường gạch ngang. Hãy lấy con số đó làm subTotalWritten.
          - 'adjustments': Các dòng cộng/trừ thêm bên dưới tổng tiền hàng (ví dụ: + 12.160 nợ cũ, hoặc - 500 trả trước).
@@ -588,17 +625,27 @@ export default function App() {
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(() => localStorage.getItem('current_history_id'));
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [showProducts, setShowProducts] = useState(false);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [hasAIStudioKey, setHasAIStudioKey] = useState<boolean | null>(null);
   const [serverKey, setServerKey] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Chatbot state
+  const [chatbotKnowledge, setChatbotKnowledge] = useState<string>('');
+  const [isSavingKnowledge, setIsSavingKnowledge] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{role: 'user'|'model', text: string}[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatSessionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const isAdmin = user?.email === 'qhuy0301@gmail.com';
 
   // Refresh app on visibility change
   const isExternalActionRef = useRef(false);
@@ -646,6 +693,47 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'chatbot_knowledge'), limit(1));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        setChatbotKnowledge(snapshot.docs[0].data().content || '');
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'chatbot_knowledge');
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleSaveKnowledge = async () => {
+    if (!user || !isAdmin) return;
+    setIsSavingKnowledge(true);
+    try {
+      const q = query(collection(db, 'chatbot_knowledge'), limit(1));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        await updateDoc(doc(db, 'chatbot_knowledge', snapshot.docs[0].id), {
+          content: chatbotKnowledge,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await addDoc(collection(db, 'chatbot_knowledge'), {
+          content: chatbotKnowledge,
+          uid: user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+      // Feedback is handled by button state/content
+    } catch (err) {
+      console.error("Save knowledge error:", err);
+      handleFirestoreError(err, OperationType.UPDATE, 'chatbot_knowledge');
+    } finally {
+      setIsSavingKnowledge(false);
+    }
+  };
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
@@ -664,10 +752,38 @@ export default function App() {
       }
 
       if (!chatSessionRef.current) {
+        let productListStr = "";
+        if (products.length > 0) {
+          productListStr = "\n\nDưới đây là danh sách sản phẩm và giá hiện tại của cửa hàng:\n" + 
+            products.map(p => {
+              let fullName = p.name;
+              if (p.size && !fullName.toLowerCase().includes(p.size.toLowerCase())) {
+                fullName += ` ${p.size}`;
+              }
+              if (p.thickness && !fullName.toLowerCase().includes(p.thickness.toLowerCase())) {
+                fullName += ` ${p.thickness}`;
+              }
+              
+              let attrStr = "";
+              if (p.attributes) {
+                const attrs = Object.entries(p.attributes).map(([k, v]) => v === 'Có' ? k : `${k}: ${v}`).join(', ');
+                if (attrs) attrStr = ` [Thuộc tính: ${attrs}]`;
+              }
+              
+              const unitStr = p.unit && !fullName.toLowerCase().includes(`(${p.unit})`) ? `/${p.unit}` : '';
+              const wholesaleStr = isAdmin && p.wholesalePrice ? `, Giá sỉ: ${formatCurrency(p.wholesalePrice)}` : '';
+              const descStr = p.description ? ` (${p.description})` : '';
+              return `- ${fullName}${attrStr}: Giá bán chung: ${formatCurrency(p.price)}${unitStr}${wholesaleStr}${descStr}`;
+            }).join('\n') +
+            "\n\nHãy sử dụng bảng giá này để báo giá chính xác cho khách hàng khi được hỏi. Lưu ý: Khi khách hàng hỏi giá, CHỈ báo Giá bán chung.";
+        }
+
         chatSessionRef.current = aiInstance.chats.create({
           model: "gemini-3.1-flash-lite-preview",
           config: {
-            systemInstruction: "Bạn là trợ lý ảo của cửa hàng nệm Mận Quý (Mận Quý Mattress Store). Bạn giúp khách hàng giải đáp thắc mắc về sản phẩm, hóa đơn, và các vấn đề liên quan đến cửa hàng. Hãy trả lời ngắn gọn, lịch sự và thân thiện bằng tiếng Việt. Khi khách hàng cần liên hệ trực tiếp hoặc hỏi thông tin liên lạc, hãy cung cấp số điện thoại cửa hàng là 0918030188 và người tư vấn là anh Huy. Đặc biệt lưu ý: Khi có ai hỏi về tên Ngân, hãy trả lời đó là Ngân Khùng.",
+            systemInstruction: "Bạn là trợ lý ảo của cửa hàng nệm Mận Quý (Mận Quý Mattress Store). Bạn giúp khách hàng giải đáp thắc mắc về sản phẩm, hóa đơn, và các vấn đề liên quan đến cửa hàng. Hãy trả lời ngắn gọn, lịch sự và thân thiện bằng tiếng Việt. Khi khách hàng cần liên hệ trực tiếp hoặc hỏi thông tin liên lạc, hãy cung cấp số điện thoại cửa hàng là 0918030188 và người tư vấn là anh Huy. Đặc biệt lưu ý: Khi có ai hỏi về tên Ngân, hãy trả lời đó là Ngân Khùng. Quy tắc về kích thước: 100 tương đương 1m, 120 tương đương 1m2, 140 tương đương 1m4, 160 tương đương 1m6, 180 tương đương 1m8, 200 tương đương 2m, 220 tương đương 2m2. Hãy hiểu các con số này khi khách hàng hỏi về kích thước nệm." + 
+            (chatbotKnowledge ? `\n\nThông tin bổ sung từ cửa hàng:\n${chatbotKnowledge}` : "") +
+            productListStr,
           }
         });
       }
@@ -714,7 +830,18 @@ export default function App() {
           }
         }
       } catch (e) {
-        console.error("Error fetching config:", e);
+        // Silently fallback to AI Studio window API if server fetch fails
+        // This is expected when running as a static site (e.g., Vercel)
+        if (window.aistudio) {
+          try {
+            const hasKey = await window.aistudio.hasSelectedApiKey();
+            setHasAIStudioKey(hasKey);
+          } catch (err) {
+            setHasAIStudioKey(false);
+          }
+        } else {
+          setHasAIStudioKey(false);
+        }
       }
     };
     fetchConfig();
@@ -738,6 +865,7 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   // Error handling helper
   const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
@@ -859,6 +987,199 @@ export default function App() {
 
     return () => unsubscribe();
   }, [isAuthReady, user]);
+
+  // Load products from Firestore
+  useEffect(() => {
+    // Fetch all products so the chatbot has access to them, regardless of login status
+    const q = query(
+      collection(db, 'products'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items: Product[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        items.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt
+        } as Product);
+      });
+      setProducts(items);
+    }, (error) => {
+      console.error("Products snapshot error:", error);
+      // Only throw error if it's not a permission error when not logged in, though public read is now allowed
+      if (user) {
+        handleFirestoreError(error, OperationType.LIST, 'products');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!user) return;
+    try {
+      await deleteDoc(doc(db, 'products', id));
+    } catch (err) {
+      console.error("Delete product error:", err);
+      handleFirestoreError(err, OperationType.DELETE, 'products');
+    }
+  };
+
+  const handleUpdateProduct = async (id: string, data: Partial<Product>) => {
+    if (!user || !isAdmin) return;
+    try {
+      await updateDoc(doc(db, 'products', id), {
+        ...data,
+        updatedAt: serverTimestamp()
+      });
+      setEditingProduct(null);
+    } catch (err) {
+      console.error("Update product error:", err);
+      handleFirestoreError(err, OperationType.UPDATE, 'products');
+    }
+  };
+
+  const handleDeleteAllProducts = async () => {
+    if (!user || !isAdmin) return;
+    
+    setIsSavingProduct(true);
+    try {
+      // For simplicity and safety in this environment, we delete one by one
+      for (const product of products) {
+        await deleteDoc(doc(db, 'products', product.id));
+      }
+      setShowDeleteAllConfirm(false);
+    } catch (err) {
+      console.error("Delete all products error:", err);
+      handleFirestoreError(err, OperationType.DELETE, 'products');
+    } finally {
+      setIsSavingProduct(false);
+    }
+  };
+
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setIsSavingProduct(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const json = XLSX.utils.sheet_to_json(worksheet);
+
+      let addedCount = 0;
+      for (const row of json as any[]) {
+        const normalizedRow: Record<string, any> = {};
+        for (const key in row) {
+          normalizedRow[key.toLowerCase().trim()] = row[key];
+        }
+
+        const name = normalizedRow['tên sản phẩm'] || normalizedRow['tên'] || normalizedRow['name'] || normalizedRow['sản phẩm'] || normalizedRow['product'] || normalizedRow['tên hàng'];
+        const priceRaw = normalizedRow['giá bán chung'] || normalizedRow['giá'] || normalizedRow['giá tiền'] || normalizedRow['price'] || normalizedRow['đơn giá'] || normalizedRow['giá bán'];
+        const wholesalePriceRaw = normalizedRow['giá sỉ'];
+        const sizeRaw = normalizedRow['kích thước'] || normalizedRow['size'] || normalizedRow['kích cỡ'];
+        const thicknessRaw = normalizedRow['độ dày'] || normalizedRow['thickness'];
+        const unitRaw = normalizedRow['đơn vị tính'] || normalizedRow['đơn vị'] || normalizedRow['unit'] || normalizedRow['dvt'];
+        const attributesRaw = normalizedRow['thuộc tính'] || normalizedRow['attributes'];
+        const description = normalizedRow['mô tả'] || normalizedRow['description'] || normalizedRow['ghi chú'] || '';
+
+        const trimmedName = name ? String(name).trim().substring(0, 190) : '';
+
+        if (trimmedName && priceRaw !== undefined) {
+          const priceStr = String(priceRaw).replace(/[^0-9]/g, '');
+          const price = parseInt(priceStr, 10);
+          
+          let wholesalePrice = null;
+          if (wholesalePriceRaw !== undefined) {
+            const wholesalePriceStr = String(wholesalePriceRaw).replace(/[^0-9]/g, '');
+            const parsedWholesalePrice = parseInt(wholesalePriceStr, 10);
+            if (!isNaN(parsedWholesalePrice)) {
+              wholesalePrice = parsedWholesalePrice;
+            }
+          }
+
+          if (!isNaN(price)) {
+            let fullName = trimmedName;
+            const size = sizeRaw !== undefined && sizeRaw !== null && sizeRaw !== '' ? String(sizeRaw).trim().substring(0, 90) : '';
+            const thickness = thicknessRaw !== undefined && thicknessRaw !== null && thicknessRaw !== '' ? String(thicknessRaw).trim().substring(0, 90) : '';
+            
+            // Ensure name includes size and thickness if they are not already there
+            if (size && !fullName.toLowerCase().includes(size.toLowerCase())) {
+              fullName += ` ${size}`;
+            }
+            if (thickness && !fullName.toLowerCase().includes(thickness.toLowerCase())) {
+              fullName += ` ${thickness}`;
+            }
+
+            const productData: any = {
+              uid: user.uid,
+              name: fullName,
+              price: price,
+              description: String(description).trim().substring(0, 990),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            };
+            
+            if (wholesalePrice !== null) {
+              productData.wholesalePrice = wholesalePrice;
+            }
+            if (size) {
+              productData.size = size;
+            }
+            if (thickness) {
+              productData.thickness = thickness;
+            }
+            if (unitRaw !== undefined && unitRaw !== null && unitRaw !== '') {
+              productData.unit = String(unitRaw).trim().substring(0, 45);
+            }
+
+            // Parse dynamic attributes
+            if (attributesRaw) {
+              const attrStr = String(attributesRaw);
+              const attrs: Record<string, string> = {};
+              // Try to split by semicolon, comma, newline, or pipe
+              const pairs = attrStr.split(/[;,\n|]/);
+              pairs.forEach(p => {
+                const [key, val] = p.split(':').map(s => s.trim());
+                if (key && val) {
+                  attrs[key] = val;
+                } else if (key) {
+                  // If no colon, just treat as a tag or generic attribute
+                  attrs[key] = 'Có';
+                }
+              });
+              if (Object.keys(attrs).length > 0) {
+                productData.attributes = attrs;
+              }
+            }
+
+            await addDoc(collection(db, 'products'), productData);
+            addedCount++;
+          }
+        }
+      }
+
+      if (addedCount > 0) {
+        alert(`Đã thêm thành công ${addedCount} sản phẩm từ file Excel!`);
+      } else {
+        alert('Không tìm thấy dữ liệu hợp lệ trong file Excel. Đảm bảo file có các cột: "Tên sản phẩm", "Giá Bán Chung", "Kích Thước", "Độ Dày".');
+      }
+    } catch (err) {
+      console.error("Lỗi đọc file Excel:", err);
+      handleFirestoreError(err, OperationType.CREATE, 'products');
+      alert('Có lỗi xảy ra khi đọc file Excel.');
+    } finally {
+      setIsSavingProduct(false);
+      if (excelInputRef.current) {
+        excelInputRef.current.value = '';
+      }
+    }
+  };
 
   const login = async () => {
     try {
@@ -1051,7 +1372,7 @@ export default function App() {
             continue;
           }
 
-          const analysisResult = await processImagesWithGemini(imgs, aiInstance);
+          const analysisResult = await processImagesWithGemini(imgs, aiInstance, products);
 
           await updateDoc(doc(db, 'history', item.id), {
             result: analysisResult,
@@ -1067,7 +1388,7 @@ export default function App() {
     };
 
     processFailedInBackground();
-  }, [history, user, isAuthReady, hasAIStudioKey, manualKey, serverKey]);
+  }, [history, user, isAuthReady, hasAIStudioKey, manualKey, serverKey, products]);
 
   const analyzeImage = async () => {
     if (images.length === 0) return;
@@ -1127,7 +1448,7 @@ export default function App() {
     if (!aiInstance) return;
 
     try {
-      const analysisResult = await processImagesWithGemini(imgs, aiInstance);
+      const analysisResult = await processImagesWithGemini(imgs, aiInstance, products);
 
       setResult(analysisResult);
 
@@ -1563,22 +1884,7 @@ export default function App() {
                   </motion.button>
                 </div>
 
-                {user && (
-                  <motion.button
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    onClick={() => setShowHistory(true)}
-                    className="w-full py-4 bg-rose-500/10 text-rose-700 rounded-[20px] sm:rounded-[24px] font-bold flex items-center justify-center gap-3 border border-rose-500/20 hover:bg-rose-500/20 transition-all relative"
-                  >
-                    <History size={20} strokeWidth={2.5} />
-                    <span>Xem lịch sử tính toán</span>
-                    {history.length > 0 && (
-                      <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold ml-1">
-                        {history.length}
-                      </span>
-                    )}
-                  </motion.button>
-                )}
+
               </div>
             ) : null}
 
@@ -1635,22 +1941,7 @@ export default function App() {
                       className="hidden"
                     />
                     
-                    {user && (
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => setShowHistory(true)}
-                        className="flex-1 flex flex-col items-center justify-center bg-rose-500/10 text-rose-700 rounded-2xl sm:rounded-3xl hover:bg-rose-500/20 transition-all border border-rose-500/20 group relative"
-                      >
-                        <History size={20} strokeWidth={2.5} />
-                        <span className="text-[10px] sm:text-xs font-bold">Lịch sử</span>
-                        {history.length > 0 && (
-                          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border border-white font-bold shadow-sm">
-                            {history.length}
-                          </span>
-                        )}
-                      </motion.button>
-                    )}
+
                   </div>
                 </div>
 
@@ -2145,18 +2436,423 @@ export default function App() {
                 )}
               </div>
             </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
-            {/* Floating Close Button for History */}
-            <motion.button
-              initial={{ opacity: 0, scale: 0.5, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.5, y: 20 }}
-              onClick={() => setShowHistory(false)}
-              className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-5 py-3 bg-red-500 text-white rounded-full shadow-2xl hover:bg-red-600 transition-all active:scale-90 font-bold text-sm sm:text-base"
+      {/* Products Drawer */}
+      <AnimatePresence>
+        {showProducts && (
+          <>
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed inset-0 glass-panel z-40 flex flex-col safe-area-pt shadow-2xl overflow-hidden"
             >
-              <X size={20} strokeWidth={2.5} />
-              <span>Đóng lịch sử</span>
-            </motion.button>
+              <div className="p-6 border-b border-white/40 flex items-center justify-between bg-white/40 backdrop-blur-md">
+                <h3 className="text-2xl font-bold tracking-tight flex items-center gap-3">
+                  <Package size={32} className="text-blue-500" />
+                  Kho sản phẩm
+                </h3>
+                <button 
+                  onClick={() => setShowProducts(false)}
+                  className="p-2 hover:bg-black/5 rounded-full transition-colors"
+                >
+                  <X size={28} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-8 max-w-5xl mx-auto w-full">
+                {/* Excel Upload Section */}
+                {isAdmin && (
+                  <div className="space-y-4">
+                    <div className="bg-white/60 p-4 rounded-2xl border border-white/80 shadow-sm space-y-3">
+                      <h4 className="font-semibold text-sm text-gray-700 flex items-center gap-2">
+                        <PlusCircle size={16} className="text-blue-600" />
+                        Thêm sản phẩm thủ công
+                      </h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input 
+                          type="text" 
+                          placeholder="Tên nệm" 
+                          id="new-p-name"
+                          className="col-span-2 px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Kích thước (vd: 1m6x2m)" 
+                          id="new-p-size"
+                          className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Độ dày (vd: 10cm)" 
+                          id="new-p-thickness"
+                          className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
+                        />
+                        <input 
+                          type="number" 
+                          placeholder="Giá bán" 
+                          id="new-p-price"
+                          className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
+                        />
+                        <input 
+                          type="text" 
+                          placeholder="Đơn vị (vd: Cái)" 
+                          id="new-p-unit"
+                          className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
+                        />
+                        <textarea 
+                          placeholder="Thuộc tính khác (VD: Màu: Xanh; Chất liệu: Cao su)" 
+                          id="new-p-attrs"
+                          className="col-span-2 px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500 min-h-[60px]"
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const name = (document.getElementById('new-p-name') as HTMLInputElement).value;
+                          const price = parseInt((document.getElementById('new-p-price') as HTMLInputElement).value);
+                          const size = (document.getElementById('new-p-size') as HTMLInputElement).value;
+                          const thickness = (document.getElementById('new-p-thickness') as HTMLInputElement).value;
+                          const unit = (document.getElementById('new-p-unit') as HTMLInputElement).value;
+                          const attrsStr = (document.getElementById('new-p-attrs') as HTMLTextAreaElement).value;
+                          
+                          if (!name || isNaN(price)) {
+                            alert("Vui lòng nhập ít nhất tên và giá!");
+                            return;
+                          }
+                          
+                          setIsSavingProduct(true);
+                          try {
+                            const attrs: Record<string, string> = {};
+                            if (attrsStr) {
+                              attrsStr.split(/[;,\n|]/).forEach(p => {
+                                const [k, v] = p.split(':').map(s => s.trim());
+                                if (k && v) attrs[k] = v;
+                                else if (k) attrs[k] = 'Có';
+                              });
+                            }
+
+                            let fullName = name;
+                            if (size && !fullName.toLowerCase().includes(size.toLowerCase())) fullName += ` ${size}`;
+                            if (thickness && !fullName.toLowerCase().includes(thickness.toLowerCase())) fullName += ` ${thickness}`;
+                            
+                            await addDoc(collection(db, 'products'), {
+                              uid: user!.uid,
+                              name: fullName,
+                              price,
+                              size,
+                              thickness,
+                              unit,
+                              attributes: attrs,
+                              createdAt: serverTimestamp(),
+                              updatedAt: serverTimestamp()
+                            });
+                            
+                            (document.getElementById('new-p-name') as HTMLInputElement).value = '';
+                            (document.getElementById('new-p-price') as HTMLInputElement).value = '';
+                            (document.getElementById('new-p-size') as HTMLInputElement).value = '';
+                            (document.getElementById('new-p-thickness') as HTMLInputElement).value = '';
+                            (document.getElementById('new-p-unit') as HTMLInputElement).value = '';
+                            (document.getElementById('new-p-attrs') as HTMLTextAreaElement).value = '';
+                            
+                          } catch (err) {
+                            console.error(err);
+                          } finally {
+                            setIsSavingProduct(false);
+                          }
+                        }}
+                        disabled={isSavingProduct}
+                        className="w-full bg-blue-500 text-white font-semibold py-2.5 rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+                      >
+                        {isSavingProduct ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                        Thêm vào kho
+                      </button>
+                    </div>
+
+                    <div className="bg-white/60 p-4 rounded-2xl border border-white/80 shadow-sm space-y-3">
+                      <h4 className="font-semibold text-sm text-gray-700 flex items-center gap-2">
+                        <FileText size={16} className="text-green-600" />
+                        Thêm hàng loạt từ Excel
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Tải lên file .xlsx chứa danh sách sản phẩm. File cần có các cột: <b>Tên sản phẩm</b>, <b>Giá Bán Chung</b>, <b>Kích Thước</b>, <b>Độ Dày</b>, <b>Đơn Vị Tính</b>.
+                      </p>
+                    <button
+                      onClick={() => excelInputRef.current?.click()}
+                      disabled={isSavingProduct}
+                      className="w-full bg-green-500/10 text-green-700 font-semibold py-2.5 rounded-xl hover:bg-green-500/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm border border-green-500/20"
+                    >
+                      {isSavingProduct ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                      Chọn file Excel
+                    </button>
+                    {isAdmin && (
+                      !showDeleteAllConfirm ? (
+                        <button
+                          onClick={() => setShowDeleteAllConfirm(true)}
+                          disabled={isSavingProduct || products.length === 0}
+                          className="w-full bg-red-500/10 text-red-700 font-semibold py-2.5 rounded-xl hover:bg-red-500/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm border border-red-500/20 mt-2"
+                        >
+                          <Trash2 size={16} />
+                          Xóa toàn bộ sản phẩm
+                        </button>
+                      ) : (
+                        <div className="bg-red-50 p-3 rounded-xl border border-red-100 space-y-2 mt-2">
+                          <p className="text-[11px] text-red-600 font-bold text-center uppercase tracking-wider">Xác nhận xóa sạch kho hàng?</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleDeleteAllProducts()}
+                              disabled={isSavingProduct}
+                              className="flex-1 bg-red-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
+                            >
+                              {isSavingProduct ? <Loader2 size={14} className="animate-spin" /> : 'Xóa hết'}
+                            </button>
+                            <button
+                              onClick={() => setShowDeleteAllConfirm(false)}
+                              disabled={isSavingProduct}
+                              className="flex-1 bg-white text-gray-600 text-xs font-bold py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    )}
+                    <input
+                      type="file"
+                      ref={excelInputRef}
+                      onChange={handleExcelUpload}
+                      accept=".xlsx, .xls"
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+              )}
+
+                {/* Chatbot Knowledge Section (Admin Only) */}
+                {isAdmin && (
+                  <div className="bg-white/60 p-4 rounded-2xl border border-white/80 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
+                          <Edit3 size={16} />
+                        </div>
+                        <h4 className="font-semibold text-sm text-gray-700">Dạy chatbot thông tin mới</h4>
+                      </div>
+                      {chatbotKnowledge && (
+                        <button 
+                          onClick={() => setChatbotKnowledge('')}
+                          className="text-[10px] font-bold text-red-500 hover:text-red-600 flex items-center gap-1 bg-red-50 px-2 py-1 rounded-lg transition-colors"
+                        >
+                          <X size={12} />
+                          XÓA NHANH
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <textarea
+                        placeholder="Nhập các thông tin bạn muốn chatbot ghi nhớ (VD: Chính sách bảo hành, khuyến mãi hiện tại, thông tin về các loại nệm...)"
+                        value={chatbotKnowledge}
+                        onChange={(e) => setChatbotKnowledge(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-sm transition-all bg-white min-h-[120px] resize-none pr-8"
+                      />
+                      {chatbotKnowledge && (
+                        <button 
+                          onClick={() => setChatbotKnowledge('')}
+                          className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 transition-colors"
+                          title="Xóa nội dung"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        await handleSaveKnowledge();
+                        setChatbotKnowledge('');
+                      }}
+                      disabled={isSavingKnowledge || !chatbotKnowledge.trim()}
+                      className="w-full bg-blue-500 text-white font-semibold py-2 rounded-xl hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+                    >
+                      {isSavingKnowledge ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                      Lưu thông tin dạy chatbot
+                    </button>
+                  </div>
+                )}
+
+                {/* Product List */}
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-3">
+                    <h4 className="font-semibold text-sm text-gray-700 flex items-center justify-between">
+                      Danh sách sản phẩm
+                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{products.length}</span>
+                    </h4>
+                    
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input 
+                        type="text" 
+                        placeholder="Tìm kiếm sản phẩm..." 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500 transition-all bg-white/50"
+                      />
+                    </div>
+                  </div>
+
+                  {products.length === 0 ? (
+                    <div className="text-center py-8 text-[#999]">
+                      <Package size={40} strokeWidth={1.5} className="mx-auto mb-3 opacity-20" />
+                      <p className="text-sm">Chưa có sản phẩm nào</p>
+                    </div>
+                  ) : (
+                    products
+                      .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                      .map((product) => (
+                      <div key={product.id} className="group bg-white border border-gray-100 rounded-2xl p-4 hover:shadow-md transition-all relative">
+                        {editingProduct?.id === product.id ? (
+                          <div className="space-y-3">
+                            <input 
+                              type="text" 
+                              defaultValue={product.name}
+                              id={`edit-name-${product.id}`}
+                              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                              placeholder="Tên sản phẩm"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input 
+                                type="text" 
+                                defaultValue={product.size || ''}
+                                id={`edit-size-${product.id}`}
+                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                placeholder="Kích thước"
+                              />
+                              <input 
+                                type="text" 
+                                defaultValue={product.thickness || ''}
+                                id={`edit-thickness-${product.id}`}
+                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                placeholder="Độ dày"
+                              />
+                              <input 
+                                type="number" 
+                                defaultValue={product.price}
+                                id={`edit-price-${product.id}`}
+                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                placeholder="Giá bán"
+                              />
+                              <input 
+                                type="text" 
+                                defaultValue={product.unit || ''}
+                                id={`edit-unit-${product.id}`}
+                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                placeholder="Đơn vị"
+                              />
+                            </div>
+                            <textarea 
+                              defaultValue={product.attributes ? Object.entries(product.attributes).map(([k, v]) => `${k}: ${v}`).join('; ') : ''}
+                              id={`edit-attrs-${product.id}`}
+                              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500 min-h-[60px]"
+                              placeholder="Thuộc tính khác (VD: Màu: Xanh; Chất liệu: Cao su)"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  const name = (document.getElementById(`edit-name-${product.id}`) as HTMLInputElement).value;
+                                  const price = parseInt((document.getElementById(`edit-price-${product.id}`) as HTMLInputElement).value);
+                                  const size = (document.getElementById(`edit-size-${product.id}`) as HTMLInputElement).value;
+                                  const thickness = (document.getElementById(`edit-thickness-${product.id}`) as HTMLInputElement).value;
+                                  const unit = (document.getElementById(`edit-unit-${product.id}`) as HTMLInputElement).value;
+                                  const attrsStr = (document.getElementById(`edit-attrs-${product.id}`) as HTMLTextAreaElement).value;
+                                  
+                                  const attrs: Record<string, string> = {};
+                                  if (attrsStr) {
+                                    attrsStr.split(/[;,\n|]/).forEach(p => {
+                                      const [k, v] = p.split(':').map(s => s.trim());
+                                      if (k && v) attrs[k] = v;
+                                      else if (k) attrs[k] = 'Có';
+                                    });
+                                  }
+
+                                  handleUpdateProduct(product.id, { name, price, size, thickness, unit, attributes: attrs });
+                                }}
+                                className="flex-1 bg-blue-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-600"
+                              >
+                                Lưu
+                              </button>
+                              <button
+                                onClick={() => setEditingProduct(null)}
+                                className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold py-2 rounded-lg hover:bg-gray-200"
+                              >
+                                Hủy
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="pr-16">
+                              <h5 className="font-bold text-gray-900 text-base">
+                                {product.name}
+                              </h5>
+                              
+                              {(() => {
+                                const attrs = [
+                                  product.size,
+                                  product.thickness,
+                                  ...(product.attributes ? Object.entries(product.attributes).map(([k, v]) => v === 'Có' ? k : v) : [])
+                                ].filter(Boolean);
+                                
+                                if (attrs.length === 0) return null;
+                                
+                                return (
+                                  <p className="text-xs font-bold text-gray-500 mt-1 uppercase tracking-wide">
+                                    {attrs.join(' - ')}
+                                  </p>
+                                );
+                              })()}
+
+                              <div className="flex items-baseline gap-2 mt-2">
+                                <span className="text-blue-600 font-black text-lg">
+                                  {formatCurrency(product.price)}
+                                </span>
+                                {product.unit && <span className="text-gray-400 text-sm font-medium">/ {product.unit}</span>}
+                              </div>
+                              {isAdmin && product.wholesalePrice && (
+                                <p className="text-green-600 font-semibold text-xs mt-0.5">
+                                  Giá sỉ: {formatCurrency(product.wholesalePrice)}
+                                  {product.unit && <span className="text-gray-400 font-normal ml-1">/ {product.unit}</span>}
+                                </p>
+                              )}
+                              {product.description && (
+                                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>
+                              )}
+                            </div>
+                            {isAdmin && (
+                              <div className="absolute top-4 right-4 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => setEditingProduct(product)}
+                                  className="p-1.5 text-gray-400 hover:text-blue-500 bg-gray-50 hover:bg-blue-50 rounded-lg transition-colors"
+                                >
+                                  <Edit3 size={16} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(product.id)}
+                                  className="p-1.5 text-gray-400 hover:text-red-500 bg-gray-50 hover:bg-red-50 rounded-lg transition-colors"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </>
         )}
       </AnimatePresence>
@@ -2270,6 +2966,35 @@ export default function App() {
         </AnimatePresence>
 
         <div className="flex items-center gap-3">
+          {user && (
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className={cn(
+                "w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95 relative",
+                showHistory ? "bg-gray-800" : "bg-red-500 shadow-[0_8px_16px_rgba(239,68,68,0.3)]"
+              )}
+              title={showHistory ? "Đóng Lịch Sử" : "Lịch Sử"}
+            >
+              {showHistory ? <X size={24} /> : <History size={24} />}
+              {!showHistory && history.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-white text-red-500 text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold shadow-sm border border-red-100">
+                  {history.length}
+                </span>
+              )}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowProducts(!showProducts)}
+              className={cn(
+                "w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95",
+                showProducts ? "bg-gray-800" : "bg-blue-600 shadow-[0_8px_16px_rgba(37,99,235,0.3)]"
+              )}
+              title={showProducts ? "Đóng kho hàng" : "Mở kho hàng"}
+            >
+              {showProducts ? <X size={24} /> : <Package size={24} />}
+            </button>
+          )}
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/80 backdrop-blur-md border border-white/60 flex items-center justify-center text-gray-700 shadow-lg transition-transform hover:scale-105 active:scale-95"

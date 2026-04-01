@@ -17,12 +17,56 @@
         "timestamp": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
       },
       "required": ["uid", "images", "status", "timestamp"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Store product with price for chatbot",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID of the owner" },
+        "name": { "type": "string", "description": "Product name" },
+        "price": { "type": "number", "description": "Product price" },
+        "wholesalePrice": { "type": "number", "description": "Wholesale price" },
+        "size": { "type": "string", "description": "Product size (e.g., 1m6x2m)" },
+        "thickness": { "type": "string", "description": "Product thickness (e.g., 10cm)" },
+        "unit": { "type": "string", "description": "Unit of measurement (e.g., Cái, Tấm)" },
+        "attributes": { 
+          "type": "object", 
+          "description": "Additional dynamic attributes",
+          "additionalProperties": { "type": "string" }
+        },
+        "description": { "type": "string", "description": "Optional description" },
+        "category": { "type": "string", "description": "Optional category" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["uid", "name", "price", "createdAt"]
+    },
+    "ChatbotKnowledge": {
+      "title": "ChatbotKnowledge",
+      "description": "Custom instructions and knowledge for the chatbot",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID of the owner" },
+        "content": { "type": "string", "description": "The knowledge content" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["uid", "content"]
     }
   },
   "firestore": {
     "/history/{historyId}": {
       "schema": "AnalysisHistory",
       "description": "User analysis history collection"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "User product catalog"
+    },
+    "/chatbot_knowledge/{knowledgeId}": {
+      "schema": "ChatbotKnowledge",
+      "description": "Custom chatbot knowledge"
     }
   }
 }

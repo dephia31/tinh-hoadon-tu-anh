@@ -16,12 +16,34 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == resource.data.uid;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token != null && 
+             'email' in request.auth.token && 
+             request.auth.token.email == 'qhuy0301@gmail.com';
+    }
+
     function isValidHistory(data) {
       return data.keys().hasAll(['uid', 'images', 'status', 'timestamp']) &&
              data.uid is string &&
              data.images is list &&
              data.status in ['processing', 'completed', 'failed'] &&
              data.timestamp is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['uid', 'name', 'price', 'createdAt']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.price is number && data.price >= 0 &&
+             data.createdAt is timestamp &&
+             (!('wholesalePrice' in data) || data.wholesalePrice == null || (data.wholesalePrice is number && data.wholesalePrice >= 0)) &&
+             (!('size' in data) || (data.size is string && data.size.size() < 100)) &&
+             (!('thickness' in data) || (data.thickness is string && data.thickness.size() < 100)) &&
+             (!('unit' in data) || (data.unit is string && data.unit.size() < 50)) &&
+             (!('description' in data) || (data.description is string && data.description.size() < 1000)) &&
+             (!('category' in data) || (data.category is string && data.category.size() < 100)) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     // ===============================================================
@@ -36,6 +58,23 @@ service cloud.firestore {
                       request.resource.data.uid == resource.data.uid &&
                       isValidHistory(request.resource.data);
       allow delete: if isDocOwner();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAdmin() && 
+                      request.resource.data.uid == request.auth.uid &&
+                      isValidProduct(request.resource.data);
+      allow update: if isAdmin() && 
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.createdAt == resource.data.createdAt &&
+                      isValidProduct(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /chatbot_knowledge/{knowledgeId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Default deny
