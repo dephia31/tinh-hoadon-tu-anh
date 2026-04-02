@@ -677,19 +677,47 @@ export default function App() {
   };
 
   const filteredProducts = useMemo(() => {
-    if (!searchQuery) return products;
-    const query = searchQuery.toLowerCase();
-    return products.filter(p => {
-      const nameMatch = p.name.toLowerCase().includes(query);
-      const sizeMatch = p.size?.toLowerCase().includes(query);
-      const thicknessMatch = p.thickness?.toLowerCase().includes(query);
-      const descriptionMatch = p.description?.toLowerCase().includes(query);
-      const categoryMatch = p.category?.toLowerCase().includes(query);
-      const attrMatch = p.attributes && Object.entries(p.attributes).some(([key, val]) => 
-        key.toLowerCase().includes(query) || val.toLowerCase().includes(query)
-      );
-      return nameMatch || sizeMatch || thicknessMatch || descriptionMatch || categoryMatch || attrMatch;
-    });
+    try {
+      if (!searchQuery) return products;
+      
+      const terms = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+      if (terms.length === 0) return products;
+      
+      return products.filter(p => {
+        if (!p) return false;
+        
+        // For each term, it must match at least one field
+        return terms.every(term => {
+          const termAlt = term.replace(/x/g, '*');
+          const termAlt2 = term.replace(/\*/g, 'x');
+          
+          const nameMatch = p.name ? (String(p.name).toLowerCase().includes(term) || String(p.name).toLowerCase().includes(termAlt) || String(p.name).toLowerCase().includes(termAlt2)) : false;
+          const sizeMatch = p.size ? (String(p.size).toLowerCase().includes(term) || String(p.size).toLowerCase().includes(termAlt) || String(p.size).toLowerCase().includes(termAlt2)) : false;
+          const thicknessMatch = p.thickness ? (String(p.thickness).toLowerCase().includes(term) || String(p.thickness).toLowerCase().includes(termAlt) || String(p.thickness).toLowerCase().includes(termAlt2)) : false;
+          const descriptionMatch = p.description ? String(p.description).toLowerCase().includes(term) : false;
+          const categoryMatch = p.category ? String(p.category).toLowerCase().includes(term) : false;
+          const unitMatch = p.unit ? String(p.unit).toLowerCase().includes(term) : false;
+          
+          const priceValue = p.price !== undefined && p.price !== null ? p.price : 0;
+          const priceMatch = String(priceValue).includes(term) || formatCurrency(Number(priceValue)).includes(term);
+          
+          const wholesaleValue = p.wholesalePrice !== undefined && p.wholesalePrice !== null ? p.wholesalePrice : null;
+          const wholesaleMatch = wholesaleValue !== null ? (String(wholesaleValue).includes(term) || formatCurrency(Number(wholesaleValue)).includes(term)) : false;
+          
+          const attrMatch = p.attributes && Object.entries(p.attributes).some(([key, val]) => {
+            if (!key) return false;
+            const k = String(key).toLowerCase();
+            const v = val ? String(val).toLowerCase() : '';
+            return k.includes(term) || v.includes(term) || v.includes(termAlt) || v.includes(termAlt2);
+          });
+          
+          return nameMatch || sizeMatch || thicknessMatch || descriptionMatch || categoryMatch || attrMatch || unitMatch || priceMatch || wholesaleMatch;
+        });
+      });
+    } catch (err) {
+      console.error("Search error:", err);
+      return [];
+    }
   }, [products, searchQuery]);
 
   // Chatbot state
@@ -1889,24 +1917,21 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      {!isSearching && (
-        <AnimatePresence>
-          {uploadSuccess && (
-            <motion.div
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 50 }}
-              className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2"
-            >
-              <CheckCircle2 size={20} />
-              <span className="font-medium">Đã tải ảnh lên! Sếp có thể tắt app, kết quả sẽ tự lưu vào lịch sử.</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      )}
+      <AnimatePresence>
+        {uploadSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2"
+          >
+            <CheckCircle2 size={20} />
+            <span className="font-medium">Đã tải ảnh lên! Sếp có thể tắt app, kết quả sẽ tự lưu vào lịch sử.</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {!isSearching && (
-        <header className="glass-panel fixed top-0 left-0 right-0 z-20 border-b-0 border-white/40 safe-area-pt">
+      <header className="glass-panel fixed top-0 left-0 right-0 z-20 border-b-0 border-white/40 safe-area-pt">
           <div className="max-w-4xl mx-auto px-3 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
               <Logo 
@@ -1985,16 +2010,13 @@ export default function App() {
             </div>
           </div>
         </header>
-      )}
 
       <main className={cn(
-        "max-w-4xl mx-auto px-4 pb-6 sm:px-6 sm:pb-12 transition-all duration-300",
-        isSearching ? "pt-6" : "pt-[calc(env(safe-area-inset-top)+6rem)] sm:pt-[calc(env(safe-area-inset-top)+8rem)]"
+        "max-w-4xl mx-auto px-4 pb-6 sm:px-6 sm:pb-12 transition-all duration-300 pt-[calc(env(safe-area-inset-top)+6rem)] sm:pt-[calc(env(safe-area-inset-top)+8rem)]"
       )}>
         <div className="grid gap-8 sm:gap-12">
           {/* Action Area */}
-          {!isSearching && (
-            <section className="space-y-6 sm:space-y-8">
+          <section className="space-y-6 sm:space-y-8">
             <div className="text-center space-y-2">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight md:text-4xl bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 drop-shadow-sm">Tính Toán Hóa Đơn</h2>
               <p className="text-[#666] max-w-lg mx-auto text-sm sm:text-base">
@@ -2220,7 +2242,6 @@ export default function App() {
               </div>
             )}
           </section>
-        )}
 
           {/* Results Area */}
           <AnimatePresence>
@@ -2736,7 +2757,7 @@ export default function App() {
                 </div>
 
                 {/* Admin Controls Section */}
-                {isAdmin && !isSearching && (
+                {isAdmin && (
                   <div className="grid grid-cols-1 gap-2">
                     {/* Manual Add Button */}
                     <div className="space-y-2">
@@ -2943,7 +2964,7 @@ export default function App() {
                 )}
 
                 {/* Chatbot Knowledge Section (Admin Only) */}
-                {isAdmin && !isSearching && (
+                {isAdmin && (
                   <div className="space-y-2">
                     <button
                       onClick={() => setShowChatbotKnowledge(!showChatbotKnowledge)}
@@ -3002,14 +3023,12 @@ export default function App() {
 
                 {/* Product List */}
                 <div className="space-y-3">
-                  {!isSearching && (
-                    <div className="flex flex-col gap-3">
-                      <h4 className="font-semibold text-sm text-gray-700 flex items-center justify-between">
-                        Danh sách sản phẩm
-                        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{products.length}</span>
-                      </h4>
-                    </div>
-                  )}
+                  <div className="flex flex-col gap-3">
+                    <h4 className="font-semibold text-sm text-gray-700 flex items-center justify-between">
+                      Danh sách sản phẩm
+                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{products.length}</span>
+                    </h4>
+                  </div>
                   
                   {products.length === 0 ? (
                     <div className="text-center py-8 text-[#999]">
@@ -3111,10 +3130,12 @@ export default function App() {
                                   product.thickness,
                                   ...(product.attributes ? Object.entries(product.attributes).map(([k, v]) => {
                                     if (v === 'Có') return k;
-                                    if (k.toUpperCase() === 'KÍCH THƯỚC' || k.toUpperCase() === 'DÀY' || k.toUpperCase() === 'SIZE') {
-                                      return v.replace(/\*/g, 'x');
+                                    const keyStr = String(k).toUpperCase();
+                                    const valStr = v ? String(v) : '';
+                                    if (keyStr === 'KÍCH THƯỚC' || keyStr === 'DÀY' || keyStr === 'SIZE') {
+                                      return valStr.replace(/\*/g, 'x');
                                     }
-                                    return v;
+                                    return valStr;
                                   }) : [])
                                 ].filter(Boolean);
                                 
@@ -3171,16 +3192,14 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer */}
-      {!isSearching && (
-        <footer className="max-w-4xl mx-auto px-6 pt-32 pb-48 text-center text-sm flex flex-col items-center gap-6">
-          <div onClick={handleLuckyCatClick} className="cursor-pointer transition-transform active:scale-90">
-            <LuckyCat className="w-16 h-16 sm:w-24 sm:h-24" />
-          </div>
-          <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
-            © 2026 Mận Quý • Powered by Dephia
-          </p>
-        </footer>
-      )}
+      <footer className="max-w-4xl mx-auto px-6 pt-32 pb-48 text-center text-sm flex flex-col items-center gap-6">
+        <div onClick={handleLuckyCatClick} className="cursor-pointer transition-transform active:scale-90">
+          <LuckyCat className="w-16 h-16 sm:w-24 sm:h-24" />
+        </div>
+        <p className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-pink-500 via-blue-500 to-yellow-500 font-medium drop-shadow-sm">
+          © 2026 Mận Quý • Powered by Dephia
+        </p>
+      </footer>
 
       {/* Lucky Message Overlay */}
       <AnimatePresence>
