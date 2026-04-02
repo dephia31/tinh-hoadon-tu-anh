@@ -413,16 +413,24 @@ const processImagesWithGemini = async (imgs: string[], aiInstance: any, products
     ? "\n\nDANH SÁCH SẢN PHẨM THAM KHẢO (Hãy ưu tiên nhận diện tên hàng theo danh sách này nếu khớp):\n" + 
       products.map(p => {
         let fullName = p.name || "Sản phẩm không tên";
-        if (p.size && fullName.toLowerCase && !fullName.toLowerCase().includes(p.size.toLowerCase())) fullName += ` ${p.size}`;
-        if (p.thickness && fullName.toLowerCase && !fullName.toLowerCase().includes(p.thickness.toLowerCase())) fullName += ` ${p.thickness}`;
-        
-        let attrStr = "";
+        const parts: string[] = [];
+        if (p.size) parts.push(p.size.replace(/\*/g, 'x'));
+        if (p.thickness) parts.push(p.thickness);
         if (p.attributes) {
-          const attrs = Object.entries(p.attributes).map(([k, v]) => v === 'Có' ? k : `${k}: ${v}`).join(', ');
-          if (attrs) attrStr = ` [Thuộc tính: ${attrs}]`;
+          Object.entries(p.attributes).forEach(([k, v]) => {
+            if (v === 'Có') parts.push(k);
+            else if (k.toUpperCase() === 'KÍCH THƯỚC' || k.toUpperCase() === 'DÀY' || k.toUpperCase() === 'SIZE') {
+              parts.push(v.replace(/\*/g, 'x'));
+            } else {
+              parts.push(`${k}: ${v}`);
+            }
+          });
         }
         
-        return `- ${fullName}${attrStr} (Giá: ${p.price}${p.unit ? `/${p.unit}` : ''})`;
+        const uniqueParts = parts.filter(part => !fullName.toLowerCase().includes(part.toLowerCase()));
+        const infoStr = uniqueParts.length > 0 ? ` ${uniqueParts.join(' - ')}` : "";
+        
+        return `- ${fullName}${infoStr} (Giá: ${p.price}${p.unit ? `/${p.unit}` : ''})`;
       }).join('\n')
     : "";
 
@@ -856,24 +864,28 @@ export default function App() {
         if (products.length > 0) {
           productListStr = "\n\nDưới đây là danh sách sản phẩm và giá hiện tại của cửa hàng:\n" + 
             products.map(p => {
-              let fullName = p.name;
-              if (p.size && !fullName.toLowerCase().includes(p.size.toLowerCase())) {
-                fullName += ` ${p.size}`;
-              }
-              if (p.thickness && !fullName.toLowerCase().includes(p.thickness.toLowerCase())) {
-                fullName += ` ${p.thickness}`;
+              let fullName = p.name || "Sản phẩm không tên";
+              const parts: string[] = [];
+              if (p.size) parts.push(p.size.replace(/\*/g, 'x'));
+              if (p.thickness) parts.push(p.thickness);
+              if (p.attributes) {
+                Object.entries(p.attributes).forEach(([k, v]) => {
+                  if (v === 'Có') parts.push(k);
+                  else if (k.toUpperCase() === 'KÍCH THƯỚC' || k.toUpperCase() === 'DÀY' || k.toUpperCase() === 'SIZE') {
+                    parts.push(v.replace(/\*/g, 'x'));
+                  } else {
+                    parts.push(`${k}: ${v}`);
+                  }
+                });
               }
               
-              let attrStr = "";
-              if (p.attributes) {
-                const attrs = Object.entries(p.attributes).map(([k, v]) => v === 'Có' ? k : `${k}: ${v}`).join(', ');
-                if (attrs) attrStr = ` [Thuộc tính: ${attrs}]`;
-              }
+              const uniqueParts = parts.filter(part => !fullName.toLowerCase().includes(part.toLowerCase()));
+              const infoStr = uniqueParts.length > 0 ? ` ${uniqueParts.join(' - ')}` : "";
               
               const unitStr = p.unit && !fullName.toLowerCase().includes(`(${p.unit})`) ? `/${p.unit}` : '';
               const wholesaleStr = isAdmin && p.wholesalePrice ? `, Giá sỉ: ${formatCurrency(p.wholesalePrice)}` : '';
               const descStr = p.description ? ` (${p.description})` : '';
-              return `- ${fullName}${attrStr}: Giá bán chung: ${formatCurrency(p.price)}${unitStr}${wholesaleStr}${descStr}`;
+              return `- ${fullName}${infoStr}: Giá bán chung: ${formatCurrency(p.price)}${unitStr}${wholesaleStr}${descStr}`;
             }).join('\n') +
             "\n\nHãy sử dụng bảng giá này để báo giá chính xác cho khách hàng khi được hỏi. Lưu ý: Khi khách hàng hỏi giá, CHỈ báo Giá bán chung.";
         }
@@ -3095,9 +3107,15 @@ export default function App() {
                               
                               {(() => {
                                 const attrs = [
-                                  product.size,
+                                  product.size ? product.size.replace(/\*/g, 'x') : null,
                                   product.thickness,
-                                  ...(product.attributes ? Object.entries(product.attributes).map(([k, v]) => v === 'Có' ? k : v) : [])
+                                  ...(product.attributes ? Object.entries(product.attributes).map(([k, v]) => {
+                                    if (v === 'Có') return k;
+                                    if (k.toUpperCase() === 'KÍCH THƯỚC' || k.toUpperCase() === 'DÀY' || k.toUpperCase() === 'SIZE') {
+                                      return v.replace(/\*/g, 'x');
+                                    }
+                                    return v;
+                                  }) : [])
                                 ].filter(Boolean);
                                 
                                 if (attrs.length === 0) return null;
@@ -3317,7 +3335,11 @@ export default function App() {
         <div className="flex items-center gap-3">
           {user && (
             <button
-              onClick={() => setShowHistory(!showHistory)}
+              onClick={() => {
+                const nextState = !showHistory;
+                setShowHistory(nextState);
+                if (nextState) setShowProducts(false);
+              }}
               className={cn(
                 "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95 relative",
                 showHistory ? "bg-gray-800" : "bg-red-500 shadow-[0_8px_16px_rgba(239,68,68,0.3)]"
@@ -3333,7 +3355,11 @@ export default function App() {
             </button>
           )}
           <button
-            onClick={() => setShowProducts(!showProducts)}
+            onClick={() => {
+              const nextState = !showProducts;
+              setShowProducts(nextState);
+              if (nextState) setShowHistory(false);
+            }}
             className={cn(
               "w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95",
               showProducts ? "bg-gray-800" : "bg-blue-600 shadow-[0_8px_16px_rgba(37,99,235,0.3)]"
