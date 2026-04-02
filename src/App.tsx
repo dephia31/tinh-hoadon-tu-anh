@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp, Package, Plus, Search, PlusCircle, ChevronDown } from 'lucide-react';
+import { Camera, Upload, Image as ImageIcon, Loader2, Calculator, RefreshCw, Trash2, History, X, CheckCircle2, AlertCircle, LogIn, LogOut, Save, Edit3, Maximize2, ZoomIn, Settings, Key, FileText, ChevronLeft, ChevronRight, MessageCircle, Send, Bot, User as UserIcon, ArrowUp, Package, Plus, Search, PlusCircle, ChevronDown, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LuckyCat from './components/LuckyCat';
 import Logo from './components/Logo';
@@ -650,6 +650,12 @@ export default function App() {
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [showChatbotKnowledge, setShowChatbotKnowledge] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [minPrice, setMinPrice] = useState<number | null>(null);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<'name' | 'price-asc' | 'price-desc' | 'newest'>('name');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showLuckyMessage, setShowLuckyMessage] = useState(false);
   const [luckyMessageText, setLuckyMessageText] = useState("🧧 Cung Hỷ Phát Tài 🧧");
   const luckyClickCountRef = useRef(0);
@@ -676,49 +682,131 @@ export default function App() {
     }, 3000);
   };
 
+  const guessCategory = (name: string): string => {
+    const n = name.toLowerCase();
+    if (n.includes('nệm') || n.includes('đệm')) return 'Nệm';
+    if (n.includes('gối')) return 'Gối';
+    if (n.includes('drap') || n.includes('ga') || n.includes('mền') || n.includes('chăn')) return 'Chăn Ga';
+    if (n.includes('chiếu')) return 'Chiếu';
+    if (n.includes('topper')) return 'Topper';
+    if (n.includes('tấm bảo vệ')) return 'Bảo vệ nệm';
+    if (n.includes('võng')) return 'Võng';
+    if (n.includes('mùng') || n.includes('màn')) return 'Mùng/Màn';
+    if (n.includes('giường')) return 'Giường';
+    if (n.includes('tủ')) return 'Tủ';
+    if (n.includes('bàn') || n.includes('ghế')) return 'Bàn Ghế';
+    return 'Khác';
+  };
+
+  const getCategoryColor = (cat: string | null): string => {
+    if (!cat) return "blue";
+    const c = cat.toLowerCase();
+    if (c.includes('nệm') || c.includes('đệm')) return "blue";
+    if (c.includes('gối')) return "green";
+    if (c.includes('chăn ga') || c.includes('drap') || c.includes('mền')) return "purple";
+    if (c.includes('chiếu')) return "orange";
+    if (c.includes('topper')) return "pink";
+    if (c.includes('bảo vệ')) return "cyan";
+    if (c.includes('võng')) return "teal";
+    if (c.includes('mùng') || c.includes('màn')) return "indigo";
+    if (c.includes('giường')) return "amber";
+    if (c.includes('tủ')) return "slate";
+    if (c.includes('bàn') || c.includes('ghế')) return "rose";
+    return "gray";
+  };
+
+  const categories = useMemo(() => {
+    const cats = new Set<string>();
+    products.forEach(p => {
+      const cat = p.category || guessCategory(p.name);
+      if (cat) cats.add(cat);
+    });
+    return Array.from(cats).sort();
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     try {
-      if (!searchQuery) return products;
+      let result = [...products];
       
-      const terms = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
-      if (terms.length === 0) return products;
+      // Category filter
+      if (selectedCategory) {
+        result = result.filter(p => (p.category || guessCategory(p.name)) === selectedCategory);
+      }
       
-      return products.filter(p => {
-        if (!p) return false;
-        
-        // For each term, it must match at least one field
-        return terms.every(term => {
-          const termAlt = term.replace(/x/g, '*');
-          const termAlt2 = term.replace(/\*/g, 'x');
-          
-          const nameMatch = p.name ? (String(p.name).toLowerCase().includes(term) || String(p.name).toLowerCase().includes(termAlt) || String(p.name).toLowerCase().includes(termAlt2)) : false;
-          const sizeMatch = p.size ? (String(p.size).toLowerCase().includes(term) || String(p.size).toLowerCase().includes(termAlt) || String(p.size).toLowerCase().includes(termAlt2)) : false;
-          const thicknessMatch = p.thickness ? (String(p.thickness).toLowerCase().includes(term) || String(p.thickness).toLowerCase().includes(termAlt) || String(p.thickness).toLowerCase().includes(termAlt2)) : false;
-          const descriptionMatch = p.description ? String(p.description).toLowerCase().includes(term) : false;
-          const categoryMatch = p.category ? String(p.category).toLowerCase().includes(term) : false;
-          const unitMatch = p.unit ? String(p.unit).toLowerCase().includes(term) : false;
-          
-          const priceValue = p.price !== undefined && p.price !== null ? p.price : 0;
-          const priceMatch = String(priceValue).includes(term) || formatCurrency(Number(priceValue)).includes(term);
-          
-          const wholesaleValue = p.wholesalePrice !== undefined && p.wholesalePrice !== null ? p.wholesalePrice : null;
-          const wholesaleMatch = wholesaleValue !== null ? (String(wholesaleValue).includes(term) || formatCurrency(Number(wholesaleValue)).includes(term)) : false;
-          
-          const attrMatch = p.attributes && Object.entries(p.attributes).some(([key, val]) => {
-            if (!key) return false;
-            const k = String(key).toLowerCase();
-            const v = val ? String(val).toLowerCase() : '';
-            return k.includes(term) || v.includes(term) || v.includes(termAlt) || v.includes(termAlt2);
+      // Price range filter
+      if (minPrice !== null) {
+        result = result.filter(p => (p.price || 0) >= minPrice);
+      }
+      if (maxPrice !== null) {
+        result = result.filter(p => (p.price || 0) <= maxPrice);
+      }
+      
+      // Search query filter
+      if (searchQuery) {
+        const terms = searchQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+        if (terms.length > 0) {
+          result = result.filter(p => {
+            if (!p) return false;
+            return terms.every(term => {
+              const termAlt = term.replace(/x/g, '*');
+              const termAlt2 = term.replace(/\*/g, 'x');
+              
+              const nameMatch = p.name ? (String(p.name).toLowerCase().includes(term) || String(p.name).toLowerCase().includes(termAlt) || String(p.name).toLowerCase().includes(termAlt2)) : false;
+              const sizeMatch = p.size ? (String(p.size).toLowerCase().includes(term) || String(p.size).toLowerCase().includes(termAlt) || String(p.size).toLowerCase().includes(termAlt2)) : false;
+              const thicknessMatch = p.thickness ? (String(p.thickness).toLowerCase().includes(term) || String(p.thickness).toLowerCase().includes(termAlt) || String(p.thickness).toLowerCase().includes(termAlt2)) : false;
+              const descriptionMatch = p.description ? String(p.description).toLowerCase().includes(term) : false;
+              const categoryMatch = p.category ? String(p.category).toLowerCase().includes(term) : false;
+              const unitMatch = p.unit ? String(p.unit).toLowerCase().includes(term) : false;
+              
+              const priceValue = p.price !== undefined && p.price !== null ? p.price : 0;
+              const priceMatch = String(priceValue).includes(term) || formatCurrency(Number(priceValue)).includes(term);
+              
+              const wholesaleValue = p.wholesalePrice !== undefined && p.wholesalePrice !== null ? p.wholesalePrice : null;
+              const wholesaleMatch = wholesaleValue !== null ? (String(wholesaleValue).includes(term) || formatCurrency(Number(wholesaleValue)).includes(term)) : false;
+              
+              const attrMatch = p.attributes && Object.entries(p.attributes).some(([key, val]) => {
+                if (!key) return false;
+                const k = String(key).toLowerCase();
+                const v = val ? String(val).toLowerCase() : '';
+                return k.includes(term) || v.includes(term) || v.includes(termAlt) || v.includes(termAlt2);
+              });
+              
+              return nameMatch || sizeMatch || thicknessMatch || descriptionMatch || categoryMatch || attrMatch || unitMatch || priceMatch || wholesaleMatch;
+            });
           });
-          
-          return nameMatch || sizeMatch || thicknessMatch || descriptionMatch || categoryMatch || attrMatch || unitMatch || priceMatch || wholesaleMatch;
-        });
+        }
+      }
+      
+      // Sorting
+      result.sort((a, b) => {
+        switch (sortBy) {
+          case 'price-asc':
+            return (a.price || 0) - (b.price || 0);
+          case 'price-desc':
+            return (b.price || 0) - (a.price || 0);
+          case 'newest':
+            return (b.createdAt || 0) - (a.createdAt || 0);
+          case 'name':
+          default:
+            return (a.name || '').localeCompare(b.name || '');
+        }
       });
+      
+      return result;
     } catch (err) {
       console.error("Search error:", err);
       return [];
     }
-  }, [products, searchQuery]);
+  }, [products, searchQuery, selectedCategory, minPrice, maxPrice, sortBy]);
+
+  const groupedProducts = useMemo(() => {
+    const groups: Record<string, Product[]> = {};
+    filteredProducts.forEach(p => {
+      if (!groups[p.name]) groups[p.name] = [];
+      groups[p.name].push(p);
+    });
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredProducts]);
 
   // Chatbot state
   const [chatbotKnowledge, setChatbotKnowledge] = useState<string>('');
@@ -1273,6 +1361,7 @@ export default function App() {
         const sizeRaw = normalizedRow['kích thước'] || normalizedRow['size'] || normalizedRow['kích cỡ'];
         const thicknessRaw = normalizedRow['độ dày'] || normalizedRow['thickness'];
         const unitRaw = normalizedRow['đơn vị tính'] || normalizedRow['đơn vị'] || normalizedRow['unit'] || normalizedRow['dvt'];
+        const categoryRaw = normalizedRow['danh mục'] || normalizedRow['loại'] || normalizedRow['category'] || normalizedRow['nhóm'];
         const attributesRaw = normalizedRow['thuộc tính'] || normalizedRow['attributes'];
         const description = normalizedRow['mô tả'] || normalizedRow['description'] || normalizedRow['ghi chú'] || '';
 
@@ -1308,6 +1397,7 @@ export default function App() {
               uid: user.uid,
               name: fullName,
               price: price,
+              category: categoryRaw ? String(categoryRaw).trim() : guessCategory(fullName),
               description: String(description).trim().substring(0, 990),
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
@@ -2728,7 +2818,7 @@ export default function App() {
                 {/* Search Bar (Compact) */}
                 <div className={cn(
                   "sticky top-0 z-10 bg-white/80 backdrop-blur-md p-2 -mx-6 mb-2 border-b border-white/40 transition-all",
-                  isSearching && "bg-white shadow-sm"
+                  (isSearching || showFilterPanel) && "bg-white shadow-sm"
                 )}>
                   <div className="relative flex items-center gap-2">
                     <div className="relative flex-1">
@@ -2742,6 +2832,18 @@ export default function App() {
                         className="w-full pl-8 pr-4 py-1.5 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all bg-white shadow-sm"
                       />
                     </div>
+                    <button 
+                      onClick={() => setShowFilterPanel(!showFilterPanel)}
+                      className={cn(
+                        "p-2 rounded-xl border transition-all",
+                        showFilterPanel || selectedCategory || minPrice || maxPrice || sortBy !== 'name'
+                          ? "bg-blue-50 border-blue-200 text-blue-600"
+                          : "bg-white border-gray-200 text-gray-400 hover:text-gray-600"
+                      )}
+                      title="Bộ lọc"
+                    >
+                      <Filter size={14} />
+                    </button>
                     {isSearching && (
                       <button 
                         onClick={() => {
@@ -2754,6 +2856,88 @@ export default function App() {
                       </button>
                     )}
                   </div>
+
+                  {/* Filter Panel */}
+                  <AnimatePresence>
+                    {showFilterPanel && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="pt-3 pb-2 space-y-4">
+                          <div className="grid grid-cols-2 gap-3">
+                            {/* Category Filter */}
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Danh mục</label>
+                              <select 
+                                value={selectedCategory || ''} 
+                                onChange={(e) => setSelectedCategory(e.target.value || null)}
+                                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500 bg-white"
+                              >
+                                <option value="">Tất cả danh mục</option>
+                                {categories.map(cat => (
+                                  <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Sort By */}
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Sắp xếp</label>
+                              <select 
+                                value={sortBy} 
+                                onChange={(e) => setSortBy(e.target.value as any)}
+                                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500 bg-white"
+                              >
+                                <option value="name">Tên A-Z</option>
+                                <option value="price-asc">Giá thấp → cao</option>
+                                <option value="price-desc">Giá cao → thấp</option>
+                                <option value="newest">Mới nhất</option>
+                              </select>
+                            </div>
+
+                            {/* Price Range */}
+                            <div className="col-span-2 space-y-1">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Khoảng giá (VNĐ)</label>
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  type="number" 
+                                  placeholder="Từ" 
+                                  value={minPrice || ''}
+                                  onChange={(e) => setMinPrice(e.target.value ? Number(e.target.value) : null)}
+                                  className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500 bg-white"
+                                />
+                                <span className="text-gray-400 text-xs">-</span>
+                                <input 
+                                  type="number" 
+                                  placeholder="Đến" 
+                                  value={maxPrice || ''}
+                                  onChange={(e) => setMaxPrice(e.target.value ? Number(e.target.value) : null)}
+                                  className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500 bg-white"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end">
+                            <button 
+                              onClick={() => {
+                                setSelectedCategory(null);
+                                setMinPrice(null);
+                                setMaxPrice(null);
+                                setSortBy('name');
+                              }}
+                              className="text-[10px] font-bold text-rose-500 hover:text-rose-600 transition-colors"
+                            >
+                              Đặt lại bộ lọc
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Admin Controls Section */}
@@ -2812,6 +2996,12 @@ export default function App() {
                                   id="new-p-unit"
                                   className="px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500"
                                 />
+                                <input 
+                                  type="text" 
+                                  placeholder="Danh mục (vd: Nệm)" 
+                                  id="new-p-category"
+                                  className="col-span-2 px-3 py-2 rounded-xl border border-gray-200 text-xs outline-none focus:border-blue-500"
+                                />
                                 <textarea 
                                   placeholder="Thuộc tính khác (VD: Màu: Xanh; Chất liệu: Cao su)" 
                                   id="new-p-attrs"
@@ -2825,6 +3015,7 @@ export default function App() {
                                   const size = (document.getElementById('new-p-size') as HTMLInputElement).value;
                                   const thickness = (document.getElementById('new-p-thickness') as HTMLInputElement).value;
                                   const unit = (document.getElementById('new-p-unit') as HTMLInputElement).value;
+                                  const category = (document.getElementById('new-p-category') as HTMLInputElement).value;
                                   const attrsStr = (document.getElementById('new-p-attrs') as HTMLTextAreaElement).value;
                                   
                                   if (!name || isNaN(price)) {
@@ -2854,6 +3045,7 @@ export default function App() {
                                       size,
                                       thickness,
                                       unit,
+                                      category: category || guessCategory(fullName),
                                       attributes: attrs,
                                       createdAt: serverTimestamp(),
                                       updatedAt: serverTimestamp()
@@ -3022,7 +3214,114 @@ export default function App() {
                 )}
 
                 {/* Product List */}
-                <div className="space-y-3">
+                <div className="space-y-4">
+                  {/* Category Chips - Grid Layout */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <button
+                      onClick={() => setSelectedCategory(null)}
+                      className={cn(
+                        "px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all border flex items-center justify-between gap-2",
+                        selectedCategory === null
+                          ? "bg-blue-500 text-white border-blue-500 shadow-lg shadow-blue-100"
+                          : "bg-blue-50/50 text-blue-600 border-blue-100 hover:bg-blue-50"
+                      )}
+                    >
+                      <span>Tất cả</span>
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded-lg text-[9px]",
+                        selectedCategory === null ? "bg-white/20 text-white" : "bg-blue-100 text-blue-500"
+                      )}>
+                        {products.length}
+                      </span>
+                    </button>
+                    {categories.map(cat => {
+                      const count = products.filter(p => (p.category || guessCategory(p.name)) === cat).length;
+                      const color = getCategoryColor(cat);
+                      
+                      // Dynamic color classes based on the category
+                      const activeClasses: Record<string, string> = {
+                        blue: "bg-blue-500 border-blue-500 shadow-blue-100",
+                        green: "bg-green-500 border-green-500 shadow-green-100",
+                        purple: "bg-purple-500 border-purple-500 shadow-purple-100",
+                        orange: "bg-orange-500 border-orange-500 shadow-orange-100",
+                        pink: "bg-pink-500 border-pink-500 shadow-pink-100",
+                        cyan: "bg-cyan-500 border-cyan-500 shadow-cyan-100",
+                        teal: "bg-teal-500 border-teal-500 shadow-teal-100",
+                        indigo: "bg-indigo-500 border-indigo-500 shadow-indigo-100",
+                        amber: "bg-amber-500 border-amber-500 shadow-amber-100",
+                        slate: "bg-slate-500 border-slate-500 shadow-slate-100",
+                        rose: "bg-rose-500 border-rose-500 shadow-rose-100",
+                        gray: "bg-gray-500 border-gray-500 shadow-gray-100",
+                      };
+
+                      const inactiveClasses: Record<string, string> = {
+                        blue: "bg-blue-50/50 text-blue-600 border-blue-100",
+                        green: "bg-green-50/50 text-green-600 border-green-100",
+                        purple: "bg-purple-50/50 text-purple-600 border-purple-100",
+                        orange: "bg-orange-50/50 text-orange-600 border-orange-100",
+                        pink: "bg-pink-50/50 text-pink-600 border-pink-100",
+                        cyan: "bg-cyan-50/50 text-cyan-600 border-cyan-100",
+                        teal: "bg-teal-50/50 text-teal-600 border-teal-100",
+                        indigo: "bg-indigo-50/50 text-indigo-600 border-indigo-100",
+                        amber: "bg-amber-50/50 text-amber-600 border-amber-100",
+                        slate: "bg-slate-50/50 text-slate-600 border-slate-100",
+                        rose: "bg-rose-50/50 text-rose-600 border-rose-100",
+                        gray: "bg-gray-50/50 text-gray-600 border-gray-100",
+                      };
+
+                      const badgeClasses: Record<string, string> = {
+                        blue: "bg-blue-100 text-blue-500",
+                        green: "bg-green-100 text-green-500",
+                        purple: "bg-purple-100 text-purple-500",
+                        orange: "bg-orange-100 text-orange-500",
+                        pink: "bg-pink-100 text-pink-500",
+                        cyan: "bg-cyan-100 text-cyan-500",
+                        teal: "bg-teal-100 text-teal-500",
+                        indigo: "bg-indigo-100 text-indigo-500",
+                        amber: "bg-amber-100 text-amber-500",
+                        slate: "bg-slate-100 text-slate-500",
+                        rose: "bg-rose-100 text-rose-500",
+                        gray: "bg-gray-100 text-gray-400",
+                      };
+
+                      const hoverClasses: Record<string, string> = {
+                        blue: "hover:bg-blue-50 hover:border-blue-200",
+                        green: "hover:bg-green-50 hover:border-green-200",
+                        purple: "hover:bg-purple-50 hover:border-purple-200",
+                        orange: "hover:bg-orange-50 hover:border-orange-200",
+                        pink: "hover:bg-pink-50 hover:border-pink-200",
+                        cyan: "hover:bg-cyan-50 hover:border-cyan-200",
+                        teal: "hover:bg-teal-50 hover:border-teal-200",
+                        indigo: "hover:bg-indigo-50 hover:border-indigo-200",
+                        amber: "hover:bg-amber-50 hover:border-amber-200",
+                        slate: "hover:bg-slate-50 hover:border-slate-200",
+                        rose: "hover:bg-rose-50 hover:border-rose-200",
+                        gray: "hover:bg-gray-50 hover:border-gray-200",
+                      };
+
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                          className={cn(
+                            "px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all border flex items-center justify-between gap-2",
+                            selectedCategory === cat
+                              ? cn(activeClasses[color], "text-white shadow-lg")
+                              : cn(inactiveClasses[color], hoverClasses[color])
+                          )}
+                        >
+                          <span className="truncate">{cat}</span>
+                          <span className={cn(
+                            "px-1.5 py-0.5 rounded-lg text-[9px] shrink-0",
+                            selectedCategory === cat ? "bg-white/20 text-white" : badgeClasses[color]
+                          )}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   <div className="flex flex-col gap-3">
                     <h4 className="font-semibold text-sm text-gray-700 flex items-center justify-between">
                       Danh sách sản phẩm
@@ -3036,154 +3335,210 @@ export default function App() {
                       <p className="text-sm">Chưa có sản phẩm nào</p>
                     </div>
                   ) : (
-                    filteredProducts
-                      .map((product) => (
-                      <div key={product.id} className="group bg-white border border-gray-100 rounded-2xl p-4 hover:shadow-md transition-shadow relative">
-                        {editingProduct?.id === product.id ? (
-                          <div className="space-y-3">
-                            <input 
-                              type="text" 
-                              defaultValue={product.name}
-                              id={`edit-name-${product.id}`}
-                              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
-                              placeholder="Tên sản phẩm"
-                            />
-                            <div className="grid grid-cols-2 gap-2">
-                              <input 
-                                type="text" 
-                                defaultValue={product.size || ''}
-                                id={`edit-size-${product.id}`}
-                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
-                                placeholder="Kích thước"
-                              />
-                              <input 
-                                type="text" 
-                                defaultValue={product.thickness || ''}
-                                id={`edit-thickness-${product.id}`}
-                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
-                                placeholder="Độ dày"
-                              />
-                              <input 
-                                type="number" 
-                                defaultValue={product.price}
-                                id={`edit-price-${product.id}`}
-                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
-                                placeholder="Giá bán"
-                              />
-                              <input 
-                                type="text" 
-                                defaultValue={product.unit || ''}
-                                id={`edit-unit-${product.id}`}
-                                className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
-                                placeholder="Đơn vị"
-                              />
-                            </div>
-                            <textarea 
-                              defaultValue={product.attributes ? Object.entries(product.attributes).map(([k, v]) => `${k}: ${v}`).join('; ') : ''}
-                              id={`edit-attrs-${product.id}`}
-                              className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500 min-h-[60px]"
-                              placeholder="Thuộc tính khác (VD: Màu: Xanh; Chất liệu: Cao su)"
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => {
-                                  const name = (document.getElementById(`edit-name-${product.id}`) as HTMLInputElement).value;
-                                  const price = parseInt((document.getElementById(`edit-price-${product.id}`) as HTMLInputElement).value);
-                                  const size = (document.getElementById(`edit-size-${product.id}`) as HTMLInputElement).value;
-                                  const thickness = (document.getElementById(`edit-thickness-${product.id}`) as HTMLInputElement).value;
-                                  const unit = (document.getElementById(`edit-unit-${product.id}`) as HTMLInputElement).value;
-                                  const attrsStr = (document.getElementById(`edit-attrs-${product.id}`) as HTMLTextAreaElement).value;
-                                  
-                                  const attrs: Record<string, string> = {};
-                                  if (attrsStr) {
-                                    attrsStr.split(/[;,\n|]/).forEach(p => {
-                                      const [k, v] = p.split(':').map(s => s.trim());
-                                      if (k && v) attrs[k] = v;
-                                      else if (k) attrs[k] = 'Có';
-                                    });
-                                  }
+                    <div className="space-y-3">
+                      {groupedProducts.map(([name, groupProducts]) => {
+                        const isExpanded = expandedGroups[name] || (searchQuery.length > 0 && groupProducts.length < 5);
+                        const hasMultiple = groupProducts.length > 1;
 
-                                  handleUpdateProduct(product.id, { name, price, size, thickness, unit, attributes: attrs });
-                                }}
-                                className="flex-1 bg-blue-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-600"
-                              >
-                                Lưu
-                              </button>
+                        return (
+                          <div key={name} className="space-y-2">
+                            {hasMultiple ? (
                               <button
-                                onClick={() => setEditingProduct(null)}
-                                className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold py-2 rounded-lg hover:bg-gray-200"
+                                onClick={() => setExpandedGroups(prev => ({ ...prev, [name]: !prev[name] }))}
+                                className="w-full flex items-center justify-between p-4 bg-white border border-gray-100 rounded-2xl hover:shadow-sm transition-all text-left group"
                               >
-                                Hủy
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 group-hover:bg-blue-100 transition-colors">
+                                    <Package size={20} />
+                                  </div>
+                                  <div>
+                                    <h5 className="font-bold text-gray-900 text-sm">{name}</h5>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                                      {groupProducts.length} phiên bản / kích thước
+                                    </p>
+                                  </div>
+                                </div>
+                                <ChevronDown 
+                                  size={18} 
+                                  className={cn("text-gray-400 transition-transform duration-300", isExpanded && "rotate-180")} 
+                                />
                               </button>
-                            </div>
+                            ) : null}
+
+                            <AnimatePresence initial={false}>
+                              {(isExpanded || !hasMultiple) && (
+                                <motion.div
+                                  initial={hasMultiple ? { height: 0, opacity: 0 } : false}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  className={cn("space-y-2 overflow-hidden", hasMultiple && "pl-4 border-l-2 border-blue-50 ml-5")}
+                                >
+                                  {groupProducts.map((product) => (
+                                    <div key={product.id} className="group bg-white border border-gray-100 rounded-2xl p-4 hover:shadow-md transition-shadow relative">
+                                      {editingProduct?.id === product.id ? (
+                                        <div className="space-y-3">
+                                          <input 
+                                            type="text" 
+                                            defaultValue={product.name}
+                                            id={`edit-name-${product.id}`}
+                                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                            placeholder="Tên sản phẩm"
+                                          />
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <input 
+                                              type="text" 
+                                              defaultValue={product.size || ''}
+                                              id={`edit-size-${product.id}`}
+                                              className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                              placeholder="Kích thước"
+                                            />
+                                            <input 
+                                              type="text" 
+                                              defaultValue={product.thickness || ''}
+                                              id={`edit-thickness-${product.id}`}
+                                              className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                              placeholder="Độ dày"
+                                            />
+                                            <input 
+                                              type="number" 
+                                              defaultValue={product.price}
+                                              id={`edit-price-${product.id}`}
+                                              className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                              placeholder="Giá bán"
+                                            />
+                                            <input 
+                                              type="text" 
+                                              defaultValue={product.unit || ''}
+                                              id={`edit-unit-${product.id}`}
+                                              className="px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                              placeholder="Đơn vị"
+                                            />
+                                            <input 
+                                              type="text" 
+                                              defaultValue={product.category || ''}
+                                              id={`edit-category-${product.id}`}
+                                              className="col-span-2 px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500"
+                                              placeholder="Danh mục"
+                                            />
+                                          </div>
+                                          <textarea 
+                                            defaultValue={product.attributes ? Object.entries(product.attributes).map(([k, v]) => `${k}: ${v}`).join('; ') : ''}
+                                            id={`edit-attrs-${product.id}`}
+                                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-blue-500 min-h-[60px]"
+                                            placeholder="Thuộc tính khác (VD: Màu: Xanh; Chất liệu: Cao su)"
+                                          />
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={() => {
+                                                const name = (document.getElementById(`edit-name-${product.id}`) as HTMLInputElement).value;
+                                                const price = parseInt((document.getElementById(`edit-price-${product.id}`) as HTMLInputElement).value);
+                                                const size = (document.getElementById(`edit-size-${product.id}`) as HTMLInputElement).value;
+                                                const thickness = (document.getElementById(`edit-thickness-${product.id}`) as HTMLInputElement).value;
+                                                const unit = (document.getElementById(`edit-unit-${product.id}`) as HTMLInputElement).value;
+                                                const category = (document.getElementById(`edit-category-${product.id}`) as HTMLInputElement).value;
+                                                const attrsStr = (document.getElementById(`edit-attrs-${product.id}`) as HTMLTextAreaElement).value;
+                                                
+                                                const attrs: Record<string, string> = {};
+                                                if (attrsStr) {
+                                                  attrsStr.split(/[;,\n|]/).forEach(p => {
+                                                    const [k, v] = p.split(':').map(s => s.trim());
+                                                    if (k && v) attrs[k] = v;
+                                                    else if (k) attrs[k] = 'Có';
+                                                  });
+                                                }
+
+                                                handleUpdateProduct(product.id, { name, price, size, thickness, unit, category: category || guessCategory(name), attributes: attrs });
+                                              }}
+                                              className="flex-1 bg-blue-500 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-600"
+                                            >
+                                              Lưu
+                                            </button>
+                                            <button
+                                              onClick={() => setEditingProduct(null)}
+                                              className="flex-1 bg-gray-100 text-gray-600 text-xs font-bold py-2 rounded-lg hover:bg-gray-200"
+                                            >
+                                              Hủy
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div className="pr-16">
+                                            <h5 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                                              {product.name}
+                                              <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                                                {product.category || guessCategory(product.name)}
+                                              </span>
+                                            </h5>
+                                            
+                                            {(() => {
+                                              const attrs = [
+                                                product.size ? product.size.replace(/\*/g, 'x') : null,
+                                                product.thickness,
+                                                ...(product.attributes ? Object.entries(product.attributes).map(([k, v]) => {
+                                                  if (v === 'Có') return k;
+                                                  const keyStr = String(k).toUpperCase();
+                                                  const valStr = v ? String(v) : '';
+                                                  if (keyStr === 'KÍCH THƯỚC' || keyStr === 'DÀY' || keyStr === 'SIZE') {
+                                                    return valStr.replace(/\*/g, 'x');
+                                                  }
+                                                  return valStr;
+                                                }) : [])
+                                              ].filter(Boolean);
+                                              
+                                              if (attrs.length === 0) return null;
+                                              
+                                              return (
+                                                <p className="text-xs font-bold text-gray-500 mt-1 uppercase tracking-wide">
+                                                  {attrs.join(' - ')}
+                                                </p>
+                                              );
+                                            })()}
+
+                                            <div className="flex items-baseline gap-2 mt-2">
+                                              <span className="text-blue-600 font-black text-lg">
+                                                {formatCurrency(product.price)}
+                                              </span>
+                                              {product.unit && <span className="text-gray-400 text-sm font-medium">/ {product.unit}</span>}
+                                            </div>
+                                            {isAdmin && product.wholesalePrice && (
+                                              <p className="text-green-600 font-semibold text-xs mt-0.5">
+                                                Giá sỉ: {formatCurrency(product.wholesalePrice)}
+                                                {product.unit && <span className="text-gray-400 font-normal ml-1">/ {product.unit}</span>}
+                                              </p>
+                                            )}
+                                            {product.description && (
+                                              <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>
+                                            )}
+                                          </div>
+                                          {isAdmin && (
+                                            <div className="absolute top-4 right-4 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                              <button
+                                                onClick={() => setEditingProduct(product)}
+                                                className="p-1.5 text-gray-400 hover:text-blue-500 bg-gray-50 hover:bg-blue-50 rounded-lg transition-colors"
+                                              >
+                                                <Edit3 size={16} />
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteProduct(product.id)}
+                                                className="p-1.5 text-gray-400 hover:text-red-500 bg-gray-50 hover:bg-red-50 rounded-lg transition-colors"
+                                              >
+                                                <Trash2 size={16} />
+                                              </button>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  ))}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </div>
-                        ) : (
-                          <>
-                            <div className="pr-16">
-                              <h5 className="font-bold text-gray-900 text-base">
-                                {product.name}
-                              </h5>
-                              
-                              {(() => {
-                                const attrs = [
-                                  product.size ? product.size.replace(/\*/g, 'x') : null,
-                                  product.thickness,
-                                  ...(product.attributes ? Object.entries(product.attributes).map(([k, v]) => {
-                                    if (v === 'Có') return k;
-                                    const keyStr = String(k).toUpperCase();
-                                    const valStr = v ? String(v) : '';
-                                    if (keyStr === 'KÍCH THƯỚC' || keyStr === 'DÀY' || keyStr === 'SIZE') {
-                                      return valStr.replace(/\*/g, 'x');
-                                    }
-                                    return valStr;
-                                  }) : [])
-                                ].filter(Boolean);
-                                
-                                if (attrs.length === 0) return null;
-                                
-                                return (
-                                  <p className="text-xs font-bold text-gray-500 mt-1 uppercase tracking-wide">
-                                    {attrs.join(' - ')}
-                                  </p>
-                                );
-                              })()}
-
-                              <div className="flex items-baseline gap-2 mt-2">
-                                <span className="text-blue-600 font-black text-lg">
-                                  {formatCurrency(product.price)}
-                                </span>
-                                {product.unit && <span className="text-gray-400 text-sm font-medium">/ {product.unit}</span>}
-                              </div>
-                              {isAdmin && product.wholesalePrice && (
-                                <p className="text-green-600 font-semibold text-xs mt-0.5">
-                                  Giá sỉ: {formatCurrency(product.wholesalePrice)}
-                                  {product.unit && <span className="text-gray-400 font-normal ml-1">/ {product.unit}</span>}
-                                </p>
-                              )}
-                              {product.description && (
-                                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{product.description}</p>
-                              )}
-                            </div>
-                            {isAdmin && (
-                              <div className="absolute top-4 right-4 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => setEditingProduct(product)}
-                                  className="p-1.5 text-gray-400 hover:text-blue-500 bg-gray-50 hover:bg-blue-50 rounded-lg transition-colors"
-                                >
-                                  <Edit3 size={16} />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteProduct(product.id)}
-                                  className="p-1.5 text-gray-400 hover:text-red-500 bg-gray-50 hover:bg-red-50 rounded-lg transition-colors"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )))}
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
